@@ -201,6 +201,16 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         return $.supplyThreshold;
     }
 
+    function lastSalt() external view returns (bytes32) {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        return $.salts[$.salts.length - 1];
+    }
+
+    function remainingSalts() external view returns (uint256) {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        return $.salts.length - $.nextSaltIndex;
+    }
+
     function tokens(uint256 index) external view returns (address) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         return $.tokens[index];
