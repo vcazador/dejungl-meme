@@ -5,6 +5,8 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
+import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {IMemeFactory} from "./interfaces/IMemeFactory.sol";
 import {DeJunglMemeToken} from "./tokens/DeJunglMemeToken.sol";
@@ -14,6 +16,9 @@ import {DeJunglMemeToken} from "./tokens/DeJunglMemeToken.sol";
  * @dev This contract allows the deployment of new DeJunglMemeToken contracts with specified parameters.
  */
 contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory {
+    using Checkpoints for Checkpoints.Trace208;
+    using EnumerableSet for EnumerableSet.AddressSet;
+
     uint256 public constant FEE_PRECISION = 1e6; // 100%
 
     /// @custom:storage-location erc7201:dejungle.storage.DeJunglMemeFactory
@@ -25,8 +30,10 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         uint256 maxSupply;
         uint256 supplyThreshold;
         uint256 nextSaltIndex;
-        address[] tokens;
         bytes32[] salts;
+        EnumerableSet.AddressSet tokens;
+        mapping(address account => Checkpoints.Trace208) buys;
+        mapping(address account => Checkpoints.Trace208) sells;
     }
 
     // keccak256(abi.encode(uint256(keccak256("dejungle.storage.DeJunglMemeFactory")) - 1)) & ~bytes32(uint256(0xff))
@@ -40,6 +47,8 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
     }
 
     address public immutable beacon;
+
+    event AccountSpendingTracked(address indexed account, int256 amount);
 
     /**
      * @dev Emitted when a new DeJunglMemeToken is deployed.
@@ -55,6 +64,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
     error InvalidProxyAddress(address proxyAddress);
     error InvalidSalt(bytes32 salt);
     error NoSaltAvailable();
+    error UnauthorizedCaller();
     error ZeroAddress();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -161,9 +171,41 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
 
         DeJunglMemeToken(proxyAddress).initialize(name, symbol, tokenUri, deployer, initialReserve, reserveRatio);
 
-        $.tokens.push(proxyAddress);
+        $.tokens.add(proxyAddress);
 
         emit TokenDeployed(proxyAddress, deployer, initialReserve, reserveRatio);
+    }
+
+    function trackAccountSpending(address account, int256 amount) external override {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        if (!$.tokens.contains(_msgSender())) {
+            revert UnauthorizedCaller();
+        }
+        if (amount > 0) {
+            uint208 totalBuys = $.buys[account].latest() + uint208(uint256(amount));
+            $.buys[account].push(uint48(block.timestamp), totalBuys);
+        } else {
+            uint208 totalSells = $.sells[account].latest() + uint208(uint256(-amount));
+            $.sells[account].push(uint48(block.timestamp), totalSells);
+        }
+        emit AccountSpendingTracked(account, amount);
+    }
+
+    function getAccountSpending(uint48 window) external view returns (uint208 totalBuys, uint208 totalSells) {
+        uint48 from = uint48(block.timestamp) - window;
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        Checkpoints.Trace208 storage buys = $.buys[_msgSender()];
+        Checkpoints.Trace208 storage sells = $.sells[_msgSender()];
+        {
+            uint208 current = buys.latest();
+            uint208 previous = buys.lowerLookup(from);
+            totalBuys = current - previous;
+        }
+        {
+            uint208 current = sells.latest();
+            uint208 previous = sells.lowerLookup(from);
+            totalSells = current - previous;
+        }
     }
 
     function calculateFee(uint256 amount) public view returns (uint256) {
@@ -213,12 +255,12 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
 
     function tokens(uint256 index) external view returns (address) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        return $.tokens[index];
+        return $.tokens.at(index);
     }
 
     function tokensLength() external view returns (uint256) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        return $.tokens.length;
+        return $.tokens.length();
     }
 
     function validateSalt(bytes32 salt) public view returns (bool) {

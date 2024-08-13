@@ -124,6 +124,8 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
         // Check if the total supply has reached or exceeded the liquidity threshold
         require(totalSupply() < factory.supplyThreshold(), "Liquidity threshold reached");
 
+        factory.trackAccountSpending(_msgSender(), int256(msg.value));
+
         uint256 fee = factory.calculateFee(msg.value);
         uint256 netValue = msg.value - fee;
 
@@ -150,6 +152,8 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
 
         _sendValue(payable(_msgSender()), netEth);
         _sendValue(factory.feeRecipient(), fee);
+
+        factory.trackAccountSpending(_msgSender(), -int256(ethReturned));
 
         emit Swap(_msgSender(), ethReturned, tokenAmount, false);
         return netEth;

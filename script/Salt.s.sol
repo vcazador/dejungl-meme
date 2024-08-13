@@ -6,7 +6,7 @@ import {Script, console} from "forge-std/Script.sol";
 import {DeJunglMemeFactory} from "src/DeJunglMemeFactory.sol";
 
 // forge script ./script/Salt.s.sol \
-//     --sig $(cast calldata "generateSalts(address,uint256,uint256)" $FACTORY 10000 1000) \
+//     --sig $(cast calldata "generateSalts(address,uint256,uint256)" $FACTORY 1000 100) \
 //     --rpc-url $RPC_URL --slow --broadcast
 contract SaltScript is Script {
     uint256 privateKey;
@@ -35,6 +35,7 @@ contract SaltScript is Script {
             if (factory.validateSalt(bytes32(salt))) {
                 salts[nextIndex] = bytes32(salt);
                 newSaltsFound++;
+                console.log("Found salt %d of %d: %s", newSaltsFound, numSalts, salt);
                 nextIndex = newSaltsFound % batchSize;
                 if (nextIndex == 0) {
                     _addSalts(factory, salts, batchSize, signerIsOwner);

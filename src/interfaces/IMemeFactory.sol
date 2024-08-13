@@ -9,4 +9,5 @@ interface IMemeFactory {
     function feeRecipient() external view returns (address payable);
     function maxSupply() external view returns (uint256);
     function supplyThreshold() external view returns (uint256);
+    function trackAccountSpending(address account, int256 amount) external;
 }

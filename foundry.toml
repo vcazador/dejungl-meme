@@ -9,6 +9,7 @@ bytecode_hash = "none"
 fs_permissions = [{ access = "read-write", path = "./deployments/"}]
 
 [rpc_endpoints]
+anvil = "http://localhost:8546"
 base = "https://mainnet.base.org"
 base_sepolia = "https://sepolia.base.org"
 
