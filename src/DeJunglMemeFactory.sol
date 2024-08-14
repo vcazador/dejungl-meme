@@ -106,7 +106,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         $.feeRecipient = feeRecipient_;
 
         $.maxSupply = 1_000_000_000 ether; // 1 Billion
-        $.supplyThreshold = 800_000_000 ether; // 800 Million
+        $.supplyThreshold = 700_000_000 ether; // 700 Million
     }
 
     function setRouter(address router_) external onlyOwner {
@@ -155,8 +155,8 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         string memory name,
         string memory symbol,
         string memory tokenUri,
-        uint256 initialReserve,
-        uint32 reserveRatio
+        uint256 initialVirtualReserveMeme,
+        uint32 initialVirtualReserveETH
     ) external returns (address proxyAddress) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         bytes32 salt = _nextSalt($);
@@ -169,11 +169,13 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
 
         address deployer = _msgSender();
 
-        DeJunglMemeToken(proxyAddress).initialize(name, symbol, tokenUri, deployer, initialReserve, reserveRatio);
+        DeJunglMemeToken(proxyAddress).initialize(
+            name, symbol, tokenUri, deployer, initialVirtualReserveMeme, initialVirtualReserveETH
+        );
 
         $.tokens.add(proxyAddress);
 
-        emit TokenDeployed(proxyAddress, deployer, initialReserve, reserveRatio);
+        emit TokenDeployed(proxyAddress, deployer, initialVirtualReserveMeme, initialVirtualReserveETH);
     }
 
     function trackAccountSpending(address account, int256 amount) external override {
@@ -261,6 +263,11 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
     function tokensLength() external view returns (uint256) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         return $.tokens.length();
+    }
+
+    function isToken(address token) external view returns (bool) {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        return $.tokens.contains(token);
     }
 
     function validateSalt(bytes32 salt) public view returns (bool) {

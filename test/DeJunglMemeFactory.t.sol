@@ -57,8 +57,8 @@ contract DeJunglMemeFactoryTest is Test {
         vm.assertEq(token.symbol(), "TEST");
         vm.assertEq(token.tokenURI(), "test.png");
         vm.assertEq(token.totalSupply(), 1 ether);
-        vm.assertEq(token.reserveRatio(), 10_000);
-        vm.assertEq(token.getRemainingMintableAmount(), 799_999_999 ether);
+        // vm.assertEq(token.reserveRatio(), 10_000);
+        vm.assertEq(token.getRemainingAmount(), 799_999_999 ether);
         vm.assertFalse(token.liquidityAdded());
     }
 

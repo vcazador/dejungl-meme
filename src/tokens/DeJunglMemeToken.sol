@@ -3,28 +3,30 @@ pragma solidity =0.8.25;
 
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-
-import {BancorFormula} from "src/bancor/BancorFormula.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
 import {IPair} from "src/interfaces/IPair.sol";
 import {IPairFactory} from "src/interfaces/IPairFactory.sol";
 import {IRouter} from "src/interfaces/IRouter.sol";
+import {IWETH} from "src/interfaces/IWETH.sol";
 
 /**
  * @title DeJunglMemeToken
  * @dev ERC20 token with Bancor bonding curve and Uniswap V3 liquidity provisioning.
  *      The contract also provides a mechanism for fee distribution and liquidity provisioning.
  */
-contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula {
+contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     address public constant BURN_ADDRESS = address(0);
 
     /// @custom:storage-location erc7201:dejungle.storage.DeJunglMemeToken
     struct DeJunglMemeTokenStorage {
         bool liquidityAdded;
         uint32 reserveRatio;
-        uint256 initialReserveBalance;
-        uint256 currentReserveBalance;
+        uint256 reserveMeme;
+        uint256 reserveETH;
+        uint256 virtualReserveMeme;
+        uint256 virtualReserveETH;
         string tokenURI;
     }
 
@@ -60,7 +62,7 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
     error InvalidReserveRatio();
     error InitialReserveTooHigh();
 
-    constructor(address factory_) {
+    constructor(address factory_) payable {
         factory = IMemeFactory(factory_);
         _disableInitializers();
     }
@@ -71,35 +73,31 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
      * @param symbol_ The symbol of the token.
      * @param tokenUri The URI for the token's metadata.
      * @param deployer_ The address of the contract deployer.
-     * @param initialReserve The initial reserve balance.
-     * @param reserveRatio_ The reserve ratio for the bonding curve.
+     * @param initialVirtualReserveMeme The virtual meme token reserve balance for the bonding curve.
+     * @param initialVirtualReserveETH The virtual eth reserve balance for the bonding curve.
      */
     function initialize(
         string memory name_,
         string memory symbol_,
         string memory tokenUri,
         address deployer_,
-        uint256 initialReserve,
-        uint32 reserveRatio_
+        uint256 initialVirtualReserveMeme,
+        uint32 initialVirtualReserveETH
     ) external initializer {
         __ERC20_init(name_, symbol_);
         __Ownable_init(deployer_);
-
-        if (reserveRatio_ > MAX_WEIGHT) {
-            revert InvalidReserveRatio();
-        }
-
-        if (initialReserve > factory.supplyThreshold()) {
-            revert InitialReserveTooHigh();
-        }
+        __ReentrancyGuard_init();
 
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-        $.initialReserveBalance = initialReserve;
-        $.currentReserveBalance = initialReserve;
-        $.reserveRatio = reserveRatio_;
-        $.tokenURI = tokenUri;
 
-        _mint(factory.feeRecipient(), 1 ether);
+        _mint(address(this), factory.maxSupply());
+        _transfer(address(this), _msgSender(), 1 ether);
+
+        $.reserveMeme = balanceOf(address(this));
+        $.reserveETH = address(this).balance;
+        $.virtualReserveMeme = initialVirtualReserveMeme;
+        $.virtualReserveETH = initialVirtualReserveETH;
+        $.tokenURI = tokenUri;
     }
 
     /**
@@ -113,16 +111,13 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
 
     /**
      * @notice Allows users to buy tokens by sending ETH to the contract.
-     * @param minTokensOut The minimum amount of tokens expected to receive.
-     * @return The amount of tokens minted.
+     * @param minAmountOut The minimum amount of tokens expected to receive.
+     * @return amountOut The amount of tokens transferred.
      */
-    function buyTokens(uint256 minTokensOut) external payable returns (uint256) {
+    function buyTokens(uint256 minAmountOut) external payable nonReentrant returns (uint256 amountOut) {
         require(msg.value > 0, "Ether value must be greater than 0");
 
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-
-        // Check if the total supply has reached or exceeded the liquidity threshold
-        require(totalSupply() < factory.supplyThreshold(), "Liquidity threshold reached");
 
         factory.trackAccountSpending(_msgSender(), int256(msg.value));
 
@@ -130,10 +125,9 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
         uint256 netValue = msg.value - fee;
 
         _sendValue(factory.feeRecipient(), fee);
-        uint256 mintedTokens = _mintTokens($, netValue, minTokensOut);
+        amountOut = _swapOut($, netValue, minAmountOut);
 
-        emit Swap(_msgSender(), netValue, mintedTokens, true);
-        return mintedTokens;
+        emit Swap(_msgSender(), netValue, amountOut, true);
     }
 
     /**
@@ -143,9 +137,13 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
      * @return The amount of ETH received.
      */
     function sellTokens(uint256 tokenAmount, uint256 minEthOut) external returns (uint256) {
+        require(tokenAmount > 0, "Token amount must be greater than 0");
+
+        _transfer(_msgSender(), address(this), tokenAmount);
+
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
 
-        uint256 ethReturned = _burnTokens($, tokenAmount, minEthOut);
+        uint256 ethReturned = _swapIn($, tokenAmount, minEthOut);
 
         uint256 fee = factory.calculateFee(ethReturned);
         uint256 netEth = ethReturned - fee;
@@ -159,111 +157,67 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
         return netEth;
     }
 
-    function liquidityAdded() public view returns (bool) {
-        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-        return $.liquidityAdded;
-    }
-
-    function reserveRatio() public view returns (uint32) {
-        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-        return $.reserveRatio;
-    }
-
-    function initialReserveBalance() public view returns (uint256) {
-        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-        return $.initialReserveBalance;
-    }
-
-    function currentReserveBalance() public view returns (uint256) {
-        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-        return $.currentReserveBalance;
-    }
-
-    function tokenURI() public view returns (string memory) {
-        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-        return $.tokenURI;
-    }
-
-    /**
-     * @notice Returns the remaining amount of tokens that can be minted before reaching the supply threshold.
-     * @return The remaining amount of tokens that can be minted.
-     */
-    function getRemainingMintableAmount() public view returns (uint256) {
-        return factory.supplyThreshold() - totalSupply();
-    }
-
-    /**
-     * @notice Calculates the number of tokens that will be minted for a given ETH amount.
-     * @param ethAmount The amount of ETH to be used for minting.
-     * @return mintAmount The amount of tokens that will be minted.
-     */
-    function calculateMintReturn(uint256 ethAmount) public view returns (uint256 mintAmount) {
-        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-        return calculatePurchaseReturn(totalSupply(), $.currentReserveBalance, $.reserveRatio, ethAmount);
-    }
-
-    /**
-     * @notice Calculates the amount of ETH that will be returned for burning a given amount of tokens.
-     * @param tokenAmount The amount of tokens to burn.
-     * @return reimbursedAmount The amount of ETH that will be reimbursed.
-     */
-    function calculateBurnReturn(uint256 tokenAmount) public view returns (uint256 reimbursedAmount) {
-        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-        return calculateSaleReturn(totalSupply(), $.currentReserveBalance, $.reserveRatio, tokenAmount);
-    }
-
     /**
      * @dev Internal function to mint tokens based on the ETH deposit.
      * @param $ The storage structure of the token.
      * @param ethDeposit The amount of ETH deposited.
-     * @param minTokensOut The minimum amount of tokens expected to receive.
-     * @return The amount of tokens minted.
+     * @param amountOut The minimum amount of tokens expected to receive.
+     * @return amountOut The amount of tokens out.
      */
-    function _mintTokens(DeJunglMemeTokenStorage storage $, uint256 ethDeposit, uint256 minTokensOut)
+    function _swapOut(DeJunglMemeTokenStorage storage $, uint256 ethDeposit, uint256 minAmountOut)
         internal
-        returns (uint256)
+        returns (uint256 amountOut)
     {
         require(ethDeposit > 0, "ETH deposit must be greater than 0");
 
-        uint256 mintedAmount = calculateMintReturn(ethDeposit);
+        uint256 newReserveETH = $.reserveETH + ethDeposit;
+        require(newReserveETH == address(this).balance, "!eth balance");
 
-        // Calculate the maximum amount that can still be minted without exceeding the liquidity threshold
-        uint256 remainingMintableAmount = getRemainingMintableAmount();
+        amountOut = _calculatePurchaseReturn($, ethDeposit);
+        require(amountOut > 0, "Insufficient liquidity for this trade");
 
-        // If the calculated minted amount exceeds the remaining mintable amount, cap it
-        if (mintedAmount > remainingMintableAmount) {
-            mintedAmount = remainingMintableAmount;
+        // Calculate the maximum amount that can still be transferred without exceeding the liquidity threshold
+        uint256 remainingAmount = getRemainingAmount();
+        require(remainingAmount > 0, "!supply");
+
+        // If the calculated transferred amount exceeds the remaining transferred amount, cap it
+        if (amountOut > remainingAmount) {
+            amountOut = remainingAmount;
         }
 
-        require(mintedAmount >= minTokensOut, "slippage");
+        require(amountOut >= minAmountOut, "slippage");
 
-        _mint(_msgSender(), mintedAmount);
-        $.currentReserveBalance += ethDeposit;
+        // Update reserves
+        $.reserveETH = newReserveETH;
+        $.reserveMeme -= amountOut;
+
+        _transfer(address(this), _msgSender(), amountOut);
 
         _checkAndAddLiquidity($);
-        return mintedAmount;
+        return amountOut;
     }
 
     /**
      * @dev Internal function to burn tokens and return the equivalent ETH.
      * @param $ The storage structure of the token.
-     * @param tokenAmount The amount of tokens to burn.
+     * @param amountIn The amount of tokens to burn.
      * @param minEthOut The minimum amount of ETH expected to receive.
-     * @return The amount of ETH reimbursed.
+     * @return ethOut The amount of ETH reimbursed.
      */
-    function _burnTokens(DeJunglMemeTokenStorage storage $, uint256 tokenAmount, uint256 minEthOut)
+    function _swapIn(DeJunglMemeTokenStorage storage $, uint256 amountIn, uint256 minEthOut)
         internal
-        returns (uint256)
+        returns (uint256 ethOut)
     {
-        require(tokenAmount > 0, "Token amount must be greater than 0");
-        require(balanceOf(_msgSender()) >= tokenAmount, "Insufficient token balance");
+        require(balanceOf(_msgSender()) >= amountIn, "Insufficient token balance");
 
-        uint256 ethReimbursed = calculateBurnReturn(tokenAmount);
-        require(ethReimbursed >= minEthOut, "slippage");
+        uint256 newReserveMeme = $.reserveMeme + amountIn;
 
-        $.currentReserveBalance -= ethReimbursed;
-        _burn(_msgSender(), tokenAmount);
-        return ethReimbursed;
+        ethOut = _calculateSalesReturn($, amountIn);
+        require(ethOut > 0 && ethOut >= minEthOut, "slippage");
+
+        // Update reserves
+        $.reserveMeme = newReserveMeme;
+        $.reserveETH -= ethOut;
     }
 
     /**
@@ -271,10 +225,41 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
      * @param $ The storage structure of the token.
      */
     function _checkAndAddLiquidity(DeJunglMemeTokenStorage storage $) internal {
-        if ($.currentReserveBalance - $.initialReserveBalance >= factory.supplyThreshold() && !$.liquidityAdded) {
+        if (getRemainingAmount() == 0 && !$.liquidityAdded) {
             _addLiquidity($);
             $.liquidityAdded = true;
         }
+    }
+
+    function _calculatePurchaseReturn(DeJunglMemeTokenStorage storage $, uint256 ethDeposit)
+        internal
+        view
+        returns (uint256 amountOut)
+    {
+        require(ethDeposit > 0, "Amount must be greater than 0");
+
+        uint256 rETH = $.reserveETH;
+        uint256 rMeme = $.reserveMeme;
+        uint256 vrETH = $.virtualReserveETH;
+        uint256 vrMeme = $.virtualReserveMeme;
+
+        uint256 newReserveETH = $.reserveETH + ethDeposit;
+        amountOut = rMeme - ((rMeme + vrMeme) * (rETH + vrETH)) / (newReserveETH + vrETH);
+    }
+
+    function _calculateSalesReturn(DeJunglMemeTokenStorage storage $, uint256 amountIn)
+        internal
+        view
+        returns (uint256 amountOut)
+    {
+        uint256 rETH = $.reserveETH;
+        uint256 rMeme = $.reserveMeme;
+        uint256 vrETH = $.virtualReserveETH;
+        uint256 vrMeme = $.virtualReserveMeme;
+
+        uint256 newReserveMeme = rMeme + amountIn;
+        uint256 balanceETH = ((rMeme + vrMeme) * (rETH + vrETH)) / (newReserveMeme + vrMeme);
+        amountOut = rETH - (balanceETH - vrETH);
     }
 
     /**
@@ -291,15 +276,14 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
             pair = pairFactory.createPair(address(this), weth, false);
         }
 
-        uint256 ethAmount = $.currentReserveBalance - $.initialReserveBalance;
+        uint256 ethAmount = $.reserveETH - $.virtualReserveETH;
         uint256 tokenAmount = 200_000_000 * (10 ** decimals());
+        uint256 escrowAmount = 100_000_000 * (10 ** decimals());
 
-        // TODO: send tokens to escrow account
+        _transfer(address(this), factory.escrow(), escrowAmount);
 
-        _mint(address(this), tokenAmount);
-
-        // uint256 tokenAmount = (ethAmount * balanceOf(pair)) /
-        //     IPair(pair).balanceOf(WETH);
+        IWETH(weth).deposit{value: ethAmount}();
+        IWETH(weth).approve(address(router), tokenAmount);
 
         _approve(address(this), address(router), tokenAmount);
 
@@ -314,6 +298,8 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
         ) returns (uint256 amountToken, uint256 amountETH, uint256) {
             emit LiquidityAddedAndBurned(amountToken, amountETH, BURN_ADDRESS);
         } catch {}
+
+        //TODO: Add gauge
     }
 
     /**
@@ -338,5 +324,29 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, BancorFormula
 
         (bool success,) = recipient.call{value: amount}("");
         require(success, "Address: unable to send value, recipient may have reverted");
+    }
+
+    function tokenURI() public view returns (string memory) {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        return $.tokenURI;
+    }
+
+    /**
+     * @notice Returns the remaining amount of tokens that can be transferred before reaching the supply threshold.
+     * @return The remaining amount of tokens that can be transferred.
+     */
+    function getRemainingAmount() public view returns (uint256) {
+        uint256 poolAmount = totalSupply() - factory.supplyThreshold();
+        return balanceOf(address(this)) - poolAmount;
+    }
+
+    function liquidityAdded() public view returns (bool) {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        return $.liquidityAdded;
+    }
+
+    function getTokenPrice() public view returns (uint256) {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        return ($.reserveETH + $.virtualReserveETH) / ($.reserveMeme + $.virtualReserveMeme);
     }
 }
