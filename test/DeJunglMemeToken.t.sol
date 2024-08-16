@@ -54,7 +54,7 @@ contract DeJunglMemeTokenTest is Test {
         );
 
         bytes32[] memory salts = new bytes32[](1);
-        salts[0] = bytes32(uint256(25816)); // _findSalt(address(proxy), 0);
+        salts[0] = bytes32(uint256(9980)); // _findSalt(address(proxy), 0);
 
         factory = DeJunglMemeFactory(address(proxy));
         factory.addSalts(salts);
@@ -101,7 +101,7 @@ contract DeJunglMemeTokenTest is Test {
 
         // Check alice's balance
         uint256 aliceBalance = memeToken.balanceOf(alice);
-        assertGt(aliceBalance, 200_000_000 ether); // 600 million
+        assertGt(aliceBalance, 200_000_000 ether); // 200 million
 
         // Check reserves
         uint256 reserveETH = memeToken.getReserveETH();
@@ -112,7 +112,7 @@ contract DeJunglMemeTokenTest is Test {
         assertEq(virtualReserveETH, initVirtualReserveETH);
         assertEq(virtualReserveMeme, initVirtualReserveMeme);
         assertEq(reserveETH, 0.991 ether);
-        assertGt(reserveMeme, 600_000_000);
+        assertGt(reserveMeme, 600_000_000); // 600 million
     }
 
     function testSellMemeToken() public {
@@ -154,19 +154,20 @@ contract DeJunglMemeTokenTest is Test {
         // Check reserves
         uint256 reserveETH = memeToken.getReserveETH();
         uint256 reserveMeme = memeToken.getReserveMeme();
+        uint256 memeBalance = memeToken.balanceOf(address(memeToken));
 
         assertEq(reserveETH, 0);
-        assertEq(reserveMeme, 0); // 300 million
+        assertEq(reserveMeme, 0);
+        assertEq(memeBalance, reserveMeme);
     }
 
     function testBuyAndSupplyLiquidityWithRandomAmount() public {
         // Create an array of ETH amounts that sum to exactly 3 ETH
-        uint256[] memory ethAmounts = generateRandomAmountArray(50, 3 ether); // Adjust the size as needed
+        uint256[] memory ethAmounts = generateRandomAmountArray(50, 3 ether);
         deal(alice, 10 ether);
 
         vm.startPrank(alice);
         for (uint256 i = 0; i < ethAmounts.length; i++) {
-            // console.log("Iteration %d amount %d", i, ethAmounts[i]);
             uint256 maxOut = (ethAmounts[i] * 9500) / 10000;
             memeToken.buy{value: ethAmounts[i]}(maxOut);
         }
@@ -188,9 +189,8 @@ contract DeJunglMemeTokenTest is Test {
 
         uint256 aliceBalance = memeToken.balanceOf(alice);
 
-        uint256[] memory tokenAmounts = generateRandomAmountArray(100, aliceBalance); // Adjust the size as needed
+        uint256[] memory tokenAmounts = generateRandomAmountArray(100, aliceBalance);
         for (uint256 i = 0; i < tokenAmounts.length; i++) {
-            // console.log("Iteration %d amount %d", i, ethAmounts[i]);
             memeToken.sell(tokenAmounts[i], 0);
         }
         vm.stopPrank();

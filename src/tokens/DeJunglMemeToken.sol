@@ -6,6 +6,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
+import {Test, console} from "forge-std/Test.sol";
 
 /**
  * @title DeJunglMemeToken
@@ -87,11 +88,11 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         _mint(address(this), factory.maxSupply());
         _transfer(address(this), _msgSender(), 1 ether);
 
-        $.reserveMeme = balanceOf(address(this));
-        $.reserveETH = address(this).balance;
         $.virtualReserveMeme = factory.initialVirtualReserveMeme();
         $.virtualReserveETH = factory.initialVirtualReserveETH();
         $.tokenURI = tokenUri;
+
+        _syncReserves($);
     }
 
     /**
@@ -121,6 +122,10 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         _sendValue(factory.feeRecipient(), fee);
         amountOut = _swapOut($, netValue, minAmountOut);
 
+        // Sync reserves before liquidity check
+        _syncReserves($);
+        _checkAndAddLiquidity($);
+
         emit Swap(_msgSender(), netValue, amountOut, true);
     }
 
@@ -130,7 +135,7 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
      * @param minEthOut The minimum amount of ETH expected to receive.
      * @return The amount of ETH received.
      */
-    function sell(uint256 tokenAmount, uint256 minEthOut) external returns (uint256) {
+    function sell(uint256 tokenAmount, uint256 minEthOut) external nonReentrant returns (uint256) {
         require(tokenAmount > 0, "Token amount must be greater than 0");
         require(balanceOf(_msgSender()) >= tokenAmount, "Insufficient token balance");
 
@@ -149,13 +154,15 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
 
         factory.trackAccountSpending(_msgSender(), -int256(ethReturned));
 
+        _syncReserves($);
+
         emit Swap(_msgSender(), ethReturned, tokenAmount, false);
         return netEth;
     }
 
-    function syncReserve() public {
+    function syncReserves() public {
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-        _syncReserve($);
+        _syncReserves($);
     }
 
     /**
@@ -188,13 +195,8 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
 
         require(amountOut >= minAmountOut, "slippage");
 
-        // Update reserves
-        $.reserveETH = newReserveETH;
-        $.reserveMeme -= amountOut;
-
         _transfer(address(this), _msgSender(), amountOut);
 
-        _checkAndAddLiquidity($);
         return amountOut;
     }
 
@@ -273,16 +275,18 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         _transfer(address(this), factory.escrow(), escrowAmount);
         _approve(address(this), address(factory), tokenAmount);
 
+        console.log("AddLIQ eth %d meme %d", ethAmount, tokenAmount + escrowAmount);
+
         try factory.createPair{value: ethAmount}(tokenAmount, ethAmount) returns (
             uint256 amountToken, uint256 amountETH, uint256 liquidity
         ) {
             emit LiquidityAddedAndBurned(amountToken, amountETH, liquidity);
         } catch {}
 
-        _syncReserve($);
+        _syncReserves($);
     }
 
-    function _syncReserve(DeJunglMemeTokenStorage storage $) internal {
+    function _syncReserves(DeJunglMemeTokenStorage storage $) internal {
         $.reserveMeme = balanceOf(address(this));
         $.reserveETH = address(this).balance;
     }
@@ -356,6 +360,6 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
     }
 
     receive() external payable {
-        syncReserve();
+        syncReserves();
     }
 }
