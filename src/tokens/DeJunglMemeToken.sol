@@ -6,7 +6,6 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
-import {Test, console} from "forge-std/Test.sol";
 
 /**
  * @title DeJunglMemeToken
@@ -274,8 +273,6 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
 
         _transfer(address(this), factory.escrow(), escrowAmount);
         _approve(address(this), address(factory), tokenAmount);
-
-        console.log("AddLIQ eth %d meme %d", ethAmount, tokenAmount + escrowAmount);
 
         try factory.createPair{value: ethAmount}(tokenAmount, ethAmount) returns (
             uint256 amountToken, uint256 amountETH, uint256 liquidity

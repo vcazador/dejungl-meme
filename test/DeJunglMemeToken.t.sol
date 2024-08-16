@@ -10,6 +10,7 @@ import {IRouter} from "src/interfaces/IRouter.sol";
 import {DeJunglMemeToken} from "src/tokens/DeJunglMemeToken.sol";
 import {DeJunglMemeTokenBeacon} from "src/tokens/DeJunglMemeTokenBeacon.sol";
 import {DeJunglMemeFactory} from "src/DeJunglMemeFactory.sol";
+import {EscrowVault} from "src/utils/EscrowVault.sol";
 
 import {IPairFactory} from "src/interfaces/IPairFactory.sol";
 import {IVoter} from "src/interfaces/IVoter.sol";
@@ -17,6 +18,7 @@ import {IVoter} from "src/interfaces/IVoter.sol";
 contract DeJunglMemeTokenTest is Test {
     DeJunglMemeFactory public factory;
     DeJunglMemeToken memeToken;
+    EscrowVault escrow;
 
     address deployer = makeAddr("deployer");
     address alice = makeAddr("alice");
@@ -25,7 +27,6 @@ contract DeJunglMemeTokenTest is Test {
     address router = 0x378926A27B15410dCf91723a4450a8316FF25cb6;
     address pairFactory = 0x7c676073854fB01a960a4AD8F72321C63F496353;
     address voter = 0xf50aA5B9f6173B85B641b420B6401C381bA330AF;
-    address escrow = makeAddr("escrow");
     address payable feeRecipient = payable(makeAddr("feeReceipient"));
 
     string BASE_SEPOLIA_RPC_URL = vm.envString("BASE_SEPOLIA_RPC_URL");
@@ -41,7 +42,12 @@ contract DeJunglMemeTokenTest is Test {
         deal(deployer, 1 ether);
         vm.startPrank(deployer);
 
-        address factoryAddress = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 3);
+        address factoryAddress = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 5);
+
+        EscrowVault escrowImpl = new EscrowVault();
+        ERC1967Proxy proxy2 = new ERC1967Proxy(address(escrowImpl), abi.encodeCall(EscrowVault.initialize, (deployer)));
+        escrow = EscrowVault(address(proxy2));
+
         DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
         DeJunglMemeTokenBeacon beacon = new DeJunglMemeTokenBeacon(address(tokenImpl));
         DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(address(beacon));
@@ -49,12 +55,12 @@ contract DeJunglMemeTokenTest is Test {
             address(factoryImpl),
             abi.encodeCall(
                 DeJunglMemeFactory.initialize,
-                (deployer, router, voter, escrow, feeRecipient, initVirtualReserveMeme, initVirtualReserveETH)
+                (deployer, router, voter, address(escrow), feeRecipient, initVirtualReserveMeme, initVirtualReserveETH)
             )
         );
 
         bytes32[] memory salts = new bytes32[](1);
-        salts[0] = bytes32(uint256(9980)); // _findSalt(address(proxy), 0);
+        salts[0] = bytes32(uint256(37965)); // _findSalt(address(proxy), 0);
 
         factory = DeJunglMemeFactory(address(proxy));
         factory.addSalts(salts);
@@ -66,6 +72,16 @@ contract DeJunglMemeTokenTest is Test {
         IPairFactory(pairFactory).updatePairManager(address(factory), true);
         IVoter(voter).setGovernor(address(factory));
         vm.stopPrank();
+    }
+
+    function _findSalt(address factory_, uint256 start) internal view returns (bytes32) {
+        while (true) {
+            if (DeJunglMemeFactory(factory_).validateSalt(bytes32(start))) {
+                return bytes32(start);
+            }
+            start++;
+        }
+        revert();
     }
 
     function generateRandomAmountArray(uint256 size, uint256 amount) internal view returns (uint256[] memory) {

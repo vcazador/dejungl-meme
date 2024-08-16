@@ -9,12 +9,12 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 import {DeJunglMemeToken} from "src/tokens/DeJunglMemeToken.sol";
 import {DeJunglMemeTokenBeacon} from "src/tokens/DeJunglMemeTokenBeacon.sol";
 import {DeJunglMemeFactory} from "src/DeJunglMemeFactory.sol";
+import {EscrowVault} from "src/utils/EscrowVault.sol";
 
 // forge script ./script/Deploy.s.sol --rpc-url $RPC_URL --slow --broadcast
 contract DeployScript is Script {
     address constant ROUTER = 0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA;
-    address constant VOTER = 0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA;
-    address constant ESCROW = 0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA; // TODO
+    address constant VOTER = 0x82B4181a649e4B244C083475629E08Cc3C29c9DB;
     address payable constant FEE_RECIPIENT = payable(0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA); // TODO
 
     uint256 privateKey;
@@ -37,7 +37,12 @@ contract DeployScript is Script {
         factoryAddress = _loadDeploymentAddress("DeJunglMemeFactory");
 
         if (factoryAddress == address(0) || !_isDeployed(factoryAddress)) {
-            factoryAddress = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 3);
+            factoryAddress = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 5);
+
+            EscrowVault escrowImpl = new EscrowVault();
+            ERC1967Proxy escrowProxy =
+                new ERC1967Proxy(address(escrowImpl), abi.encodeCall(EscrowVault.initialize, (deployer)));
+
             DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
             DeJunglMemeTokenBeacon beacon = new DeJunglMemeTokenBeacon(address(tokenImpl));
             DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(address(beacon));
@@ -45,7 +50,15 @@ contract DeployScript is Script {
                 address(factoryImpl),
                 abi.encodeCall(
                     DeJunglMemeFactory.initialize,
-                    (deployer, ROUTER, VOTER, ESCROW, FEE_RECIPIENT, initVirtualReserveMeme, initVirtualReserveETH)
+                    (
+                        deployer,
+                        ROUTER,
+                        VOTER,
+                        address(escrowProxy),
+                        FEE_RECIPIENT,
+                        initVirtualReserveMeme,
+                        initVirtualReserveETH
+                    )
                 )
             );
 
