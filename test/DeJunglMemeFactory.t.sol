@@ -24,7 +24,7 @@ contract DeJunglMemeFactoryTest is Test {
     address payable feeRecipient = payable(makeAddr("feeReceipient"));
 
     uint256 initVirtualReserveMeme = 0 ether;
-    uint256 initVirtualReserveETH = 1.27184 ether;
+    uint256 initVirtualReserveETH = 0.8475714 ether;
 
     function setUp() public {
         vm.mockCall(router, abi.encodeCall(IRouter.weth, ()), abi.encode(weth));

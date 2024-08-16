@@ -21,7 +21,7 @@ contract DeployScript is Script {
     address deployer;
 
     uint256 initVirtualReserveMeme = 0 ether;
-    uint256 initVirtualReserveETH = 1.27184 ether;
+    uint256 initVirtualReserveETH = 0.8475714 ether;
 
     function setUp() public {
         privateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");

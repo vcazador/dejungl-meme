@@ -13,7 +13,7 @@ import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
  *      The contract also provides a mechanism for fee distribution and liquidity provisioning.
  */
 contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
-    uint256 public constant ETH_BOOTSTRAP = 1_000_000;
+    uint256 public constant ETH_BOOTSTRAP = 1000_000_000;
 
     /// @custom:storage-location erc7201:dejungle.storage.DeJunglMemeToken
     struct DeJunglMemeTokenStorage {
@@ -23,6 +23,8 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         uint256 reserveETH;
         uint256 virtualReserveMeme;
         uint256 virtualReserveETH;
+        uint256 supplyThreshold;
+        uint256 escrowAmount;
         string tokenURI;
     }
 
@@ -87,6 +89,8 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         _mint(address(this), factory.maxSupply());
         _transfer(address(this), _msgSender(), 1 ether);
 
+        $.supplyThreshold = factory.supplyThreshold();
+        $.escrowAmount = factory.escrowAmount();
         $.virtualReserveMeme = factory.initialVirtualReserveMeme();
         $.virtualReserveETH = factory.initialVirtualReserveETH();
         $.tokenURI = tokenUri;
@@ -184,7 +188,7 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         require(amountOut > 0, "Insufficient liquidity for this trade");
 
         // Calculate the maximum amount that can still be transferred without exceeding the liquidity threshold
-        uint256 remainingAmount = getRemainingAmount();
+        uint256 remainingAmount = _getRemainingAmount($);
         require(remainingAmount > 0, "!supply");
 
         // If the calculated transferred amount exceeds the remaining transferred amount, cap it
@@ -225,7 +229,7 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
      * @param $ The storage structure of the token.
      */
     function _checkAndAddLiquidity(DeJunglMemeTokenStorage storage $) internal {
-        if (getRemainingAmount() == 0 && !$.liquidityAdded) {
+        if (_getRemainingAmount($) == 0 && !$.liquidityAdded) {
             _addLiquidity($);
             $.liquidityAdded = true;
         }
@@ -268,13 +272,13 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
      */
     function _addLiquidity(DeJunglMemeTokenStorage storage $) internal {
         uint256 ethAmount = $.reserveETH;
-        uint256 tokenAmount = 200_000_000 * (10 ** decimals());
-        uint256 escrowAmount = 100_000_000 * (10 ** decimals());
+        uint256 escrowAmount = $.escrowAmount;
+        uint256 poolSupplyAmount = getPoolSupply();
 
         _transfer(address(this), factory.escrow(), escrowAmount);
-        _approve(address(this), address(factory), tokenAmount);
+        _approve(address(this), address(factory), poolSupplyAmount);
 
-        try factory.createPair{value: ethAmount}(tokenAmount, ethAmount) returns (
+        try factory.createPair{value: ethAmount}(poolSupplyAmount, ethAmount) returns (
             uint256 amountToken, uint256 amountETH, uint256 liquidity
         ) {
             emit LiquidityAddedAndBurned(amountToken, amountETH, liquidity);
@@ -312,6 +316,11 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         require(success, "Address: unable to send value, recipient may have reverted");
     }
 
+    function _getRemainingAmount(DeJunglMemeTokenStorage storage $) internal view returns (uint256) {
+        uint256 poolAmount = totalSupply() - $.supplyThreshold;
+        return balanceOf(address(this)) - poolAmount;
+    }
+
     function tokenURI() public view returns (string memory) {
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
         return $.tokenURI;
@@ -322,8 +331,18 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
      * @return The remaining amount of tokens that can be transferred.
      */
     function getRemainingAmount() public view returns (uint256) {
-        uint256 poolAmount = totalSupply() - factory.supplyThreshold();
-        return balanceOf(address(this)) - poolAmount;
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        return _getRemainingAmount($);
+    }
+
+    function getPoolSupply() public view returns (uint256) {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        return totalSupply() - $.supplyThreshold - $.escrowAmount;
+    }
+
+    function getEscrowAmount() public view returns (uint256) {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        return $.escrowAmount;
     }
 
     function liquidityAdded() public view returns (bool) {

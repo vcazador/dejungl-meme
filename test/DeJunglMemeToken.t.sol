@@ -32,7 +32,7 @@ contract DeJunglMemeTokenTest is Test {
     string BASE_SEPOLIA_RPC_URL = vm.envString("BASE_SEPOLIA_RPC_URL");
 
     uint256 initVirtualReserveMeme = 0 ether;
-    uint256 initVirtualReserveETH = 1.27184 ether;
+    uint256 initVirtualReserveETH = 0.8475714 ether;
 
     function setUp() public {
         vm.createSelectFork(BASE_SEPOLIA_RPC_URL, 14_015_000);
@@ -160,7 +160,7 @@ contract DeJunglMemeTokenTest is Test {
 
         // Alice buys MemeToken
         vm.startPrank(alice);
-        memeToken.buy{value: 3 ether}(1 ether);
+        memeToken.buy{value: 2 ether}(1 ether);
         vm.stopPrank();
 
         // Check alice's balance
@@ -178,8 +178,8 @@ contract DeJunglMemeTokenTest is Test {
     }
 
     function testBuyAndSupplyLiquidityWithRandomAmount() public {
-        // Create an array of ETH amounts that sum to exactly 3 ETH
-        uint256[] memory ethAmounts = generateRandomAmountArray(50, 3 ether);
+        // Create an array of ETH amounts that sum to exactly 2 ETH
+        uint256[] memory ethAmounts = generateRandomAmountArray(50, 2 ether);
         deal(alice, 10 ether);
 
         vm.startPrank(alice);
@@ -201,7 +201,7 @@ contract DeJunglMemeTokenTest is Test {
 
         // Alice buys MemeToken
         vm.startPrank(alice);
-        memeToken.buy{value: 1 ether}(1 ether);
+        memeToken.buy{value: 1.5 ether}(1 ether);
 
         uint256 aliceBalance = memeToken.balanceOf(alice);
 

@@ -38,6 +38,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         uint256 protocolFeePercentage;
         uint256 maxSupply;
         uint256 supplyThreshold;
+        uint256 escrowAmount;
         uint256 initialVirtualReserveETH;
         uint256 initialVirtualReserveMeme;
         uint256 nextSaltIndex;
@@ -139,6 +140,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
 
         $.maxSupply = 1_000_000_000 ether; // 1 Billion
         $.supplyThreshold = 700_000_000 ether; // 700 Million
+        $.escrowAmount = 100_000_000 ether; // 100 Million
         $.initialVirtualReserveMeme = initialVirtualReserveMeme_;
         $.initialVirtualReserveETH = initialVirtualReserveETH_;
     }
@@ -171,6 +173,11 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
     function setSupplyThreshold(uint256 supplyThreshold_) external onlyOwner {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         $.supplyThreshold = supplyThreshold_;
+    }
+
+    function setBribeEscrow(uint256 escrowAmount_) external onlyOwner {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        $.escrowAmount = escrowAmount_;
     }
 
     function addSalts(bytes32[] calldata newSalts) external onlyOwner {
@@ -320,6 +327,11 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
     function supplyThreshold() external view returns (uint256) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         return $.supplyThreshold;
+    }
+
+    function escrowAmount() external view returns (uint256) {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        return $.escrowAmount;
     }
 
     function initialVirtualReserveMeme() external view returns (uint256) {
