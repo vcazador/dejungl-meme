@@ -29,7 +29,6 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         uint256 protocolFeePercentage;
         uint256 maxSupply;
         uint256 supplyThreshold;
-        uint256 nextSaltIndex;
         bytes32[] salts;
         EnumerableSet.AddressSet tokens;
         mapping(address account => Checkpoints.Trace208) buys;
@@ -48,7 +47,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
 
     address public immutable beacon;
 
-    event AccountSpendingTracked(address indexed account, int256 amount);
+    event AccountSpendingTracked(address indexed account, address indexed token, int256 amount);
 
     /**
      * @dev Emitted when a new DeJunglMemeToken is deployed.
@@ -139,13 +138,20 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         $.supplyThreshold = supplyThreshold_;
     }
 
-    function addSalts(bytes32[] calldata newSalts) external onlyOwner {
+    function addSalts(bytes32[] calldata newSalts, bool failOnInvalidSalt)
+        external
+        onlyOwner
+        returns (uint256 saltsAdded)
+    {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         for (uint256 i; i < newSalts.length; i++) {
             bytes32 salt = newSalts[i];
             if (validateSalt(salt)) {
                 $.salts.push(salt);
-            } else {
+                unchecked {
+                    saltsAdded++;
+                }
+            } else if (failOnInvalidSalt) {
                 revert InvalidSalt(salt);
             }
         }
@@ -178,7 +184,8 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
 
     function trackAccountSpending(address account, int256 amount) external override {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        if (!$.tokens.contains(_msgSender())) {
+        address token = _msgSender();
+        if (!$.tokens.contains(token)) {
             revert UnauthorizedCaller();
         }
         if (amount > 0) {
@@ -188,7 +195,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
             uint208 totalSells = $.sells[account].latest() + uint208(uint256(-amount));
             $.sells[account].push(uint48(block.timestamp), totalSells);
         }
-        emit AccountSpendingTracked(account, amount);
+        emit AccountSpendingTracked(account, token, amount);
     }
 
     function getAccountSpending(uint48 window) external view returns (uint208 totalBuys, uint208 totalSells) {
@@ -243,14 +250,9 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         return $.supplyThreshold;
     }
 
-    function lastSalt() external view returns (bytes32) {
-        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        return $.salts[$.salts.length - 1];
-    }
-
     function remainingSalts() external view returns (uint256) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        return $.salts.length - $.nextSaltIndex;
+        return $.salts.length;
     }
 
     function tokens(uint256 index) external view returns (address) {
@@ -279,21 +281,31 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
             )
         );
 
-        return _endsWith(predictedAddress, 0xBA5E);
+        return _endsWith(predictedAddress, 0xBA5E) && !_isDeployed(predictedAddress);
     }
 
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    function _nextSalt(DeJunglMemeFactoryStorage storage $) internal returns (bytes32) {
-        uint256 index = $.nextSaltIndex;
-        if (index >= $.salts.length) {
+    function _nextSalt(DeJunglMemeFactoryStorage storage $) internal returns (bytes32 salt) {
+        uint256 len = $.salts.length;
+        if (len == 0) {
             revert NoSaltAvailable();
         }
-        $.nextSaltIndex = index + 1;
-        return $.salts[index];
+        unchecked {
+            salt = $.salts[len - 1];
+        }
+        $.salts.pop();
     }
 
     function _endsWith(address _addr, uint16 _suffix) private pure returns (bool) {
         return uint16(uint160(_addr)) == _suffix;
+    }
+
+    function _isDeployed(address contractAddress) internal view returns (bool isDeployed) {
+        // slither-disable-next-line assembly
+        assembly {
+            let cs := extcodesize(contractAddress)
+            if iszero(iszero(cs)) { isDeployed := true }
+        }
     }
 }

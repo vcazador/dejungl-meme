@@ -27,9 +27,6 @@ contract SaltScript is Script {
         bytes32[] memory salts = new bytes32[](batchSize);
         uint256 salt;
         uint256 nextIndex;
-        try factory.lastSalt() returns (bytes32 result) {
-            salt = uint256(result) + 1;
-        } catch {}
         uint256 newSaltsFound;
         while (newSaltsFound < numSalts) {
             if (factory.validateSalt(bytes32(salt))) {
@@ -61,9 +58,9 @@ contract SaltScript is Script {
         }
         if (execute) {
             vm.broadcast(privateKey);
-            factory.addSalts(saltsToAdd);
+            factory.addSalts(saltsToAdd, false);
         } else {
-            emit OwnerCall(address(factory), abi.encodeCall(factory.addSalts, (saltsToAdd)));
+            emit OwnerCall(address(factory), abi.encodeCall(factory.addSalts, (saltsToAdd, false)));
         }
     }
 }

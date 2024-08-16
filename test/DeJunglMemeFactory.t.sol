@@ -40,7 +40,7 @@ contract DeJunglMemeFactoryTest is Test {
         salts[0] = bytes32(uint256(25816)); // _findSalt(address(proxy), 0);
 
         factory = DeJunglMemeFactory(address(proxy));
-        factory.addSalts(salts);
+        factory.addSalts(salts, false);
     }
 
     function test_createToken() public {
