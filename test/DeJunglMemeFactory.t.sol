@@ -20,7 +20,11 @@ contract DeJunglMemeFactoryTest is Test {
     address weth = makeAddr("weth");
     address router = makeAddr("router");
     address escrow = makeAddr("escrow");
+    address voter = makeAddr("voter");
     address payable feeRecipient = payable(makeAddr("feeReceipient"));
+
+    uint256 initVirtualReserveMeme = 0 ether;
+    uint256 initVirtualReserveETH = 0.8475714 ether;
 
     function setUp() public {
         vm.mockCall(router, abi.encodeCall(IRouter.weth, ()), abi.encode(weth));
@@ -33,7 +37,10 @@ contract DeJunglMemeFactoryTest is Test {
         DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(address(beacon));
         ERC1967Proxy proxy = new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(DeJunglMemeFactory.initialize, (deployer, router, escrow, feeRecipient))
+            abi.encodeCall(
+                DeJunglMemeFactory.initialize,
+                (deployer, router, voter, escrow, feeRecipient, initVirtualReserveMeme, initVirtualReserveETH)
+            )
         );
 
         bytes32[] memory salts = new bytes32[](1);
@@ -44,11 +51,12 @@ contract DeJunglMemeFactoryTest is Test {
     }
 
     function test_createToken() public {
+        deal(alice, 1 ether);
         vm.startPrank(alice);
 
-        address tokenAddress = factory.createToken("Test Token", "TEST", "test.png", 1_000_000 ether, 10_000);
+        address tokenAddress = factory.createToken{value: 0.001 ether}("Test Token", "TEST", "test.png");
 
-        DeJunglMemeToken token = DeJunglMemeToken(tokenAddress);
+        DeJunglMemeToken token = DeJunglMemeToken(payable(tokenAddress));
 
         vm.assertEq(factory.tokensLength(), 1);
         vm.assertEq(uint16(uint160(factory.tokens(0))), 0xBA5E);
@@ -56,9 +64,8 @@ contract DeJunglMemeFactoryTest is Test {
         vm.assertEq(token.name(), "Test Token");
         vm.assertEq(token.symbol(), "TEST");
         vm.assertEq(token.tokenURI(), "test.png");
-        vm.assertEq(token.totalSupply(), 1 ether);
-        vm.assertEq(token.reserveRatio(), 10_000);
-        vm.assertEq(token.getRemainingMintableAmount(), 799_999_999 ether);
+        vm.assertEq(token.totalSupply(), 1000_000_000 ether); // 1 Billion
+        vm.assertEq(token.getRemainingAmount(), 699_999_999 ether); // 699 million
         vm.assertFalse(token.liquidityAdded());
     }
 

@@ -21,4 +21,8 @@ interface IPairFactory {
     function isPrivileged(address _account) external view returns (bool);
 
     function isAMO(address _amo) external view returns (bool);
+
+    function owner() external view returns (address);
+
+    function updatePairManager(address _pairManager, bool _isActive) external;
 }
