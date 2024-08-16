@@ -37,13 +37,13 @@ contract EscrowVault is UUPSUpgradeable, OwnableUpgradeable {
     event ManagerUpdated(address indexed manager, bool isManager);
 
     /**
-     * @dev Emitted when a manager claims tokens.
+     * @dev Emitted when a manager collect tokens.
      * @param manager Address of the manager who claimed the tokens.
      * @param token Address of the bribe token.
      * @param to Address of the recipient.
      * @param amount Amount of tokens claimed.
      */
-    event CollectBribe(address indexed manager, address indexed token, address indexed to, uint256 amount);
+    event BribeCollected(address indexed manager, address indexed token, address indexed to, uint256 amount);
 
     error ZeroAddress();
     error UnauthorizedCaller();
@@ -101,7 +101,7 @@ contract EscrowVault is UUPSUpgradeable, OwnableUpgradeable {
 
         rewardToken.safeTransfer(to, amount);
 
-        emit CollectBribe(_msgSender(), token, to, amount);
+        emit BribeCollected(_msgSender(), token, to, amount);
     }
 
     function _authorizeUpgrade(address) internal override onlyOwner {}
