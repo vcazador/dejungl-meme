@@ -13,11 +13,15 @@ import {DeJunglMemeFactory} from "src/DeJunglMemeFactory.sol";
 // forge script ./script/Deploy.s.sol --rpc-url $RPC_URL --slow --broadcast
 contract DeployScript is Script {
     address constant ROUTER = 0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA;
+    address constant VOTER = 0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA;
     address constant ESCROW = 0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA; // TODO
     address payable constant FEE_RECIPIENT = payable(0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA); // TODO
 
     uint256 privateKey;
     address deployer;
+
+    uint256 initVirtualReserveMeme = 0 ether;
+    uint256 initVirtualReserveETH = 1.27184 ether;
 
     function setUp() public {
         privateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -39,7 +43,10 @@ contract DeployScript is Script {
             DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(address(beacon));
             ERC1967Proxy proxy = new ERC1967Proxy(
                 address(factoryImpl),
-                abi.encodeCall(DeJunglMemeFactory.initialize, (deployer, ROUTER, ESCROW, FEE_RECIPIENT))
+                abi.encodeCall(
+                    DeJunglMemeFactory.initialize,
+                    (deployer, ROUTER, VOTER, ESCROW, FEE_RECIPIENT, initVirtualReserveMeme, initVirtualReserveETH)
+                )
             );
 
             assert(address(proxy) == factoryAddress);

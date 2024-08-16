@@ -6,10 +6,6 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
-import {IPair} from "src/interfaces/IPair.sol";
-import {IPairFactory} from "src/interfaces/IPairFactory.sol";
-import {IRouter} from "src/interfaces/IRouter.sol";
-import {IWETH} from "src/interfaces/IWETH.sol";
 
 /**
  * @title DeJunglMemeToken
@@ -17,7 +13,7 @@ import {IWETH} from "src/interfaces/IWETH.sol";
  *      The contract also provides a mechanism for fee distribution and liquidity provisioning.
  */
 contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
-    address public constant BURN_ADDRESS = address(0);
+    uint256 public constant ETH_BOOTSTRAP = 1_000_000;
 
     /// @custom:storage-location erc7201:dejungle.storage.DeJunglMemeToken
     struct DeJunglMemeTokenStorage {
@@ -55,15 +51,16 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
      * @dev Emitted when liquidity is provided to Uniswap and the LP tokens are burned.
      * @param tokenAmount The amount of the token provided as liquidity.
      * @param ethAmount The amount of ETH provided as liquidity.
-     * @param burnAddress The address where the LP token is burned.
+     * @param liquidity The amount of liquidity provided in pool.
      */
-    event LiquidityAddedAndBurned(uint256 tokenAmount, uint256 ethAmount, address indexed burnAddress);
+    event LiquidityAddedAndBurned(uint256 tokenAmount, uint256 ethAmount, uint256 liquidity);
 
-    error InvalidReserveRatio();
+    error InitialETHSupplyTooLow();
     error InitialReserveTooHigh();
 
-    constructor(address factory_) payable {
+    constructor(address factory_) {
         factory = IMemeFactory(factory_);
+
         _disableInitializers();
     }
 
@@ -73,20 +70,17 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
      * @param symbol_ The symbol of the token.
      * @param tokenUri The URI for the token's metadata.
      * @param deployer_ The address of the contract deployer.
-     * @param initialVirtualReserveMeme The virtual meme token reserve balance for the bonding curve.
-     * @param initialVirtualReserveETH The virtual eth reserve balance for the bonding curve.
      */
-    function initialize(
-        string memory name_,
-        string memory symbol_,
-        string memory tokenUri,
-        address deployer_,
-        uint256 initialVirtualReserveMeme,
-        uint32 initialVirtualReserveETH
-    ) external initializer {
+    function initialize(string memory name_, string memory symbol_, string memory tokenUri, address deployer_)
+        external
+        payable
+        initializer
+    {
         __ERC20_init(name_, symbol_);
         __Ownable_init(deployer_);
         __ReentrancyGuard_init();
+
+        if (address(this).balance < ETH_BOOTSTRAP) revert InitialETHSupplyTooLow();
 
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
 
@@ -95,8 +89,8 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
 
         $.reserveMeme = balanceOf(address(this));
         $.reserveETH = address(this).balance;
-        $.virtualReserveMeme = initialVirtualReserveMeme;
-        $.virtualReserveETH = initialVirtualReserveETH;
+        $.virtualReserveMeme = factory.initialVirtualReserveMeme();
+        $.virtualReserveETH = factory.initialVirtualReserveETH();
         $.tokenURI = tokenUri;
     }
 
@@ -114,7 +108,7 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
      * @param minAmountOut The minimum amount of tokens expected to receive.
      * @return amountOut The amount of tokens transferred.
      */
-    function buyTokens(uint256 minAmountOut) external payable nonReentrant returns (uint256 amountOut) {
+    function buy(uint256 minAmountOut) external payable nonReentrant returns (uint256 amountOut) {
         require(msg.value > 0, "Ether value must be greater than 0");
 
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
@@ -136,12 +130,14 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
      * @param minEthOut The minimum amount of ETH expected to receive.
      * @return The amount of ETH received.
      */
-    function sellTokens(uint256 tokenAmount, uint256 minEthOut) external returns (uint256) {
+    function sell(uint256 tokenAmount, uint256 minEthOut) external returns (uint256) {
         require(tokenAmount > 0, "Token amount must be greater than 0");
+        require(balanceOf(_msgSender()) >= tokenAmount, "Insufficient token balance");
 
         _transfer(_msgSender(), address(this), tokenAmount);
 
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        require(!$.liquidityAdded, "Liquidity moved to JUNGL dex");
 
         uint256 ethReturned = _swapIn($, tokenAmount, minEthOut);
 
@@ -155,6 +151,11 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
 
         emit Swap(_msgSender(), ethReturned, tokenAmount, false);
         return netEth;
+    }
+
+    function syncReserve() public {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        _syncReserve($);
     }
 
     /**
@@ -208,8 +209,6 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         internal
         returns (uint256 ethOut)
     {
-        require(balanceOf(_msgSender()) >= amountIn, "Insufficient token balance");
-
         uint256 newReserveMeme = $.reserveMeme + amountIn;
 
         ethOut = _calculateSalesReturn($, amountIn);
@@ -256,9 +255,9 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         uint256 rMeme = $.reserveMeme;
         uint256 vrETH = $.virtualReserveETH;
         uint256 vrMeme = $.virtualReserveMeme;
-
         uint256 newReserveMeme = rMeme + amountIn;
         uint256 balanceETH = ((rMeme + vrMeme) * (rETH + vrETH)) / (newReserveMeme + vrMeme);
+
         amountOut = rETH - (balanceETH - vrETH);
     }
 
@@ -267,39 +266,25 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
      * @param $ The storage structure of the token.
      */
     function _addLiquidity(DeJunglMemeTokenStorage storage $) internal {
-        IRouter router = IRouter(factory.router());
-        IPairFactory pairFactory = IPairFactory(router.factory());
-        address weth = router.weth();
-        address pair = pairFactory.getPair(address(this), weth, false);
-
-        if (pair == address(0)) {
-            pair = pairFactory.createPair(address(this), weth, false);
-        }
-
-        uint256 ethAmount = $.reserveETH - $.virtualReserveETH;
+        uint256 ethAmount = $.reserveETH;
         uint256 tokenAmount = 200_000_000 * (10 ** decimals());
         uint256 escrowAmount = 100_000_000 * (10 ** decimals());
 
         _transfer(address(this), factory.escrow(), escrowAmount);
+        _approve(address(this), address(factory), tokenAmount);
 
-        IWETH(weth).deposit{value: ethAmount}();
-        IWETH(weth).approve(address(router), tokenAmount);
-
-        _approve(address(this), address(router), tokenAmount);
-
-        try router.addLiquidityETH{value: ethAmount}(
-            address(this),
-            false,
-            tokenAmount,
-            0, // slippage is unavoidable
-            0, // slippage is unavoidable
-            BURN_ADDRESS,
-            block.timestamp + 10 minutes
-        ) returns (uint256 amountToken, uint256 amountETH, uint256) {
-            emit LiquidityAddedAndBurned(amountToken, amountETH, BURN_ADDRESS);
+        try factory.createPair{value: ethAmount}(tokenAmount, ethAmount) returns (
+            uint256 amountToken, uint256 amountETH, uint256 liquidity
+        ) {
+            emit LiquidityAddedAndBurned(amountToken, amountETH, liquidity);
         } catch {}
 
-        //TODO: Add gauge
+        _syncReserve($);
+    }
+
+    function _syncReserve(DeJunglMemeTokenStorage storage $) internal {
+        $.reserveMeme = balanceOf(address(this));
+        $.reserveETH = address(this).balance;
     }
 
     /**
@@ -348,5 +333,29 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
     function getTokenPrice() public view returns (uint256) {
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
         return ($.reserveETH + $.virtualReserveETH) / ($.reserveMeme + $.virtualReserveMeme);
+    }
+
+    function getReserveETH() public view returns (uint256) {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        return $.reserveETH;
+    }
+
+    function getReserveMeme() public view returns (uint256) {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        return $.reserveMeme;
+    }
+
+    function getVirtualReserveETH() public view returns (uint256) {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        return $.virtualReserveETH;
+    }
+
+    function getVirtualReserveMeme() public view returns (uint256) {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+        return $.virtualReserveMeme;
+    }
+
+    receive() external payable {
+        syncReserve();
     }
 }
