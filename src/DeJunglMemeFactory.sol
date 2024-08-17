@@ -351,11 +351,6 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         return $.initialVirtualReserveETH;
     }
 
-    function lastSalt() external view returns (bytes32) {
-        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        return $.salts[$.salts.length - 1];
-    }
-
     function remainingSalts() external view returns (uint256) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         return $.salts.length;
@@ -376,21 +371,13 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         return $.tokens.contains(token);
     }
 
+    function getCodeHash() public view returns (bytes32) {
+        return keccak256(abi.encodePacked(type(BeaconProxy).creationCode, abi.encode(beacon, "")));
+    }
+
     function validateSalt(bytes32 salt) public view returns (bool) {
-        address predictedAddress = address(
-            uint160(
-                uint256(
-                    keccak256(
-                        abi.encodePacked(
-                            bytes1(0xff),
-                            address(this),
-                            salt,
-                            keccak256(abi.encodePacked(type(BeaconProxy).creationCode, abi.encode(beacon, "")))
-                        )
-                    )
-                )
-            )
-        );
+        address predictedAddress =
+            address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, getCodeHash())))));
 
         return _endsWith(predictedAddress, 0xBA5E) && !_isDeployed(predictedAddress);
     }

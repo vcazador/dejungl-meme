@@ -1,6 +1,6 @@
 {
-  "DeJunglMemeFactory": "0x74b6c22DA908E9ebcD290d3f8B17Acee854b930F",
-  "DeJunglMemeFactoryImplementation": "0x4C41b09a994cE70E7363e771411F2EaF6BD74F57",
-  "DeJunglMemeTokenBeacon": "0x879EB499a945d8Cd9b65F24236B858b4180947Ee",
-  "DeJunglMemeTokenImplementation": "0x6Ad11EE9473496A045362cFEF3BFfc933b70f169"
+  "DeJunglMemeFactory": "0x4cBAe3168C0B423B40c5CaD039498523293064c1",
+  "DeJunglMemeFactoryImplementation": "0x0272f8d5F577c75e1216978af306B07fBE3f6Efc",
+  "DeJunglMemeTokenBeacon": "0x74b6c22DA908E9ebcD290d3f8B17Acee854b930F",
+  "DeJunglMemeTokenImplementation": "0x4C41b09a994cE70E7363e771411F2EaF6BD74F57"
 }

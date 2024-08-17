@@ -15,7 +15,7 @@ import {EscrowVault} from "src/utils/EscrowVault.sol";
 contract DeployScript is Script {
     address constant ROUTER = 0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA;
     address constant VOTER = 0x82B4181a649e4B244C083475629E08Cc3C29c9DB;
-    address payable constant FEE_RECIPIENT = payable(0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA); // TODO
+    address payable constant FEE_RECIPIENT = payable(0xEBc5FF890E549203b9C1C7C290262fB40C3B790D); // TODO
 
     uint256 privateKey;
     address deployer;
@@ -76,9 +76,9 @@ contract DeployScript is Script {
                 if (keccak256(deployedCode) != keccak256(deployableCode)) {
                     // DeJunglMemeToken implementation has changed
                     address beaconAddress = _loadDeploymentAddress("DeJunglMemeTokenBeacon");
-                    DeJunglMemeTokenBeacon beacon = new DeJunglMemeTokenBeacon(beaconAddress);
                     DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
-                    beacon.upgradeTo(address(tokenImpl));
+                    DeJunglMemeTokenBeacon(beaconAddress).upgradeTo(address(tokenImpl));
+                    _saveDeploymentAddress("DeJunglMemeTokenImplementation", address(tokenImpl));
                 }
             }
             {
@@ -91,6 +91,7 @@ contract DeployScript is Script {
                     address beaconAddress = _loadDeploymentAddress("DeJunglMemeTokenBeacon");
                     DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(beaconAddress);
                     UUPSUpgradeable(factoryAddress).upgradeToAndCall(address(factoryImpl), "");
+                    _saveDeploymentAddress("DeJunglMemeFactoryImplementation", address(factoryImpl));
                 }
             }
         }

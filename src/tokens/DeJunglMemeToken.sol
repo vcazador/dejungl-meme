@@ -321,6 +321,10 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         return balanceOf(address(this)) - poolAmount;
     }
 
+    function getStoredTokenInfo() external pure returns (DeJunglMemeTokenStorage memory) {
+        return _getDeJunglMemeTokenStorage();
+    }
+
     function tokenURI() public view returns (string memory) {
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
         return $.tokenURI;
