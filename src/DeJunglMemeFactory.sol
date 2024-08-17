@@ -78,11 +78,16 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
      * @dev Emitted when a new DeJunglMemeToken is deployed.
      * @param tokenAddress The address of the deployed token.
      * @param deployer The address that called the createToken function.
+     * @param salt The salt used to deploy the token.
      * @param initialReserve The initial reserve liquidity provided to the token.
      * @param reserveRatio The reserveRatio ratio used for liquidity calculations.
      */
     event TokenDeployed(
-        address indexed tokenAddress, address indexed deployer, uint256 indexed initialReserve, uint256 reserveRatio
+        address indexed tokenAddress,
+        address indexed deployer,
+        bytes32 salt,
+        uint256 indexed initialReserve,
+        uint256 reserveRatio
     );
 
     error InvalidProxyAddress(address proxyAddress);
@@ -205,7 +210,28 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         returns (address proxyAddress)
     {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        bytes32 salt = _nextSalt($);
+        proxyAddress = _createToken($, name, symbol, tokenUri, _nextSalt($));
+    }
+
+    function createToken(string memory name, string memory symbol, string memory tokenUri, bytes32 salt)
+        external
+        payable
+        returns (address proxyAddress)
+    {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        if (!validateSalt(salt)) {
+            revert InvalidSalt(salt);
+        }
+        proxyAddress = _createToken($, name, symbol, tokenUri, salt);
+    }
+
+    function _createToken(
+        DeJunglMemeFactoryStorage storage $,
+        string memory name,
+        string memory symbol,
+        string memory tokenUri,
+        bytes32 salt
+    ) internal returns (address proxyAddress) {
         BeaconProxy proxy = new BeaconProxy{salt: salt}(beacon, "");
         proxyAddress = address(proxy);
 
@@ -219,7 +245,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
 
         $.tokens.add(proxyAddress);
 
-        emit TokenDeployed(proxyAddress, deployer, $.initialVirtualReserveMeme, $.initialVirtualReserveETH);
+        emit TokenDeployed(proxyAddress, deployer, salt, $.initialVirtualReserveMeme, $.initialVirtualReserveETH);
     }
 
     function trackAccountSpending(address account, int256 amount) external override {
