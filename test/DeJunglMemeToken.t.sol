@@ -63,13 +63,10 @@ contract DeJunglMemeTokenTest is Test {
             )
         );
 
-        bytes32[] memory salts = new bytes32[](1);
-        salts[0] = bytes32(uint256(37965)); // _findSalt(address(proxy), 0);
+        factory = DeJunglMemeFactory(payable(address(proxy)));
 
-        factory = DeJunglMemeFactory(address(proxy));
-        factory.addSalts(salts, false);
-
-        address tokenAddress = factory.createToken{value: INIT_DONATE}("Test Token", "TEST", "test.png");
+        bytes32 testSalt = bytes32(uint256(37965)); // _findSalt(address(proxy), 0);
+        address tokenAddress = factory.createToken{value: INIT_DONATE}("Test Token", "TEST", "test.png", testSalt);
         memeToken = DeJunglMemeToken(payable(tokenAddress));
 
         vm.startPrank(IPairFactory(pairFactory).owner());

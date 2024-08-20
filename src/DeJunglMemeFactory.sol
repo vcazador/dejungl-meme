@@ -27,7 +27,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
     using SafeERC20 for IERC20;
 
     address public constant BURN_ADDRESS = address(0);
-    uint256 public constant FEE_PRECISION = 1000_000; // 100%
+    uint256 public constant FEE_PRECISION = 1e6; // 100%
 
     /// @custom:storage-location erc7201:dejungle.storage.DeJunglMemeFactory
     struct DeJunglMemeFactoryStorage {
@@ -41,9 +41,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         uint256 supplyThreshold;
         uint256 escrowAmount;
         uint256 initialVirtualReserveETH;
-        uint256 nextSaltIndex;
         uint256 slippage;
-        bytes32[] salts;
         EnumerableSet.AddressSet tokens;
         EnumerableSet.AddressSet dexPairs;
         mapping(address account => Checkpoints.Trace208) buys;
@@ -62,45 +60,6 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
 
     address public immutable beacon;
 
-    event AccountSpendingTracked(address indexed account, address indexed token, int256 amount);
-
-    /**
-     * @dev Emitted when liquidity is provided to Uniswap and the LP tokens are burned.
-     * @param token The address of the token provided as liquidity.
-     * @param burnAddress The address where the LP token is burned.
-     * @param tokenAmount The amount of the token provided as liquidity.
-     * @param zUSDAmount The amount of the zUSD token provided as liquidity.
-     * @param ethAmount The amount of ETH.
-     * @param liquidity The amount of liquidity provided in pool.
-     */
-    event LiquidityAddedAndBurned(
-        address indexed token,
-        address indexed burnAddress,
-        uint256 tokenAmount,
-        uint256 zUSDAmount,
-        uint256 ethAmount,
-        uint256 liquidity
-    );
-
-    /**
-     * @dev Emitted when a new DeJunglMemeToken is deployed.
-     * @param tokenAddress The address of the deployed token.
-     * @param deployer The address that called the createToken function.
-     * @param salt The salt used to deploy the token.
-     * @param initialVirtualReserveETH The minimum liquidity for the bonding curve provided as virtual reserve
-     */
-    event TokenDeployed(
-        address indexed tokenAddress, address indexed deployer, bytes32 salt, uint256 initialVirtualReserveETH
-    );
-
-    error InvalidProxyAddress(address proxyAddress);
-    error InvalidSalt(bytes32 salt);
-    error NoSaltAvailable();
-    error UnauthorizedCaller();
-    error ZeroAddress();
-    error InvalidInitialETHReserve();
-    error MaxSlippage();
-
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address _beacon) {
         beacon = _beacon;
@@ -117,7 +76,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
      * @param feeRecipient_ The address where fees will be sent.
      *
      * Requirements:
-     * - `router_`, `escrow_`, and `feeRecipient_` must not be the zero address.
+     * - `initialOwner_`, `router_`, `escrow_`, and `feeRecipient_` must not be the zero address.
      * - This function can only be called once due to the `initializer` modifier.
      *
      */
@@ -148,92 +107,91 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         $.feeRecipient = feeRecipient_;
         $.zUSD = zUSD_;
 
-        $.slippage = 20_000; // 2% slippage
-        $.maxSupply = 1000_000_000 ether; // 1 Billion
+        $.slippage = 0.02e6; // 2% slippage
+        $.maxSupply = 1_000_000_000 ether; // 1 Billion
         $.supplyThreshold = 700_000_000 ether; // 700 Million
         $.escrowAmount = 100_000_000 ether; // 100 Million
         $.initialVirtualReserveETH = initialVirtualReserveETH_;
-    }
 
-    function setRouter(address router_) external onlyOwner {
-        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        $.router = router_;
+        emit RouterUpdated(router_);
+        emit VoterUpdated(voter_);
+        emit EscrowUpdated(escrow_);
+        emit ProtocolFeePercentageUpdated($.protocolFeePercentage);
+        emit FeeRecipientUpdated(feeRecipient_);
+        emit ZUSDAddressUpdated(zUSD_);
+        emit SlippageUpdated($.slippage);
+        emit MaxSupplyUpdated($.maxSupply);
+        emit SupplyThresholdUpdated($.supplyThreshold);
+        emit EscrowAmountUpdated($.escrowAmount);
+        emit InitialVirtualReserveETHUpdated(initialVirtualReserveETH_);
     }
 
     function setEscrow(address escrow_) external onlyOwner {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         $.escrow = escrow_;
-    }
-
-    function setFeeRecipient(address payable feeRecipient_) external onlyOwner {
-        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        $.feeRecipient = feeRecipient_;
-    }
-
-    function setProtocolFeePercentage(uint256 protocolFeePercentage_) external onlyOwner {
-        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        $.protocolFeePercentage = protocolFeePercentage_;
-    }
-
-    function setMaxSupply(uint256 maxSupply_) external onlyOwner {
-        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        $.maxSupply = maxSupply_;
-    }
-
-    function setSupplyThreshold(uint256 supplyThreshold_) external onlyOwner {
-        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        $.supplyThreshold = supplyThreshold_;
+        emit EscrowUpdated(escrow_);
     }
 
     function setEscrowAmount(uint256 escrowAmount_) external onlyOwner {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         $.escrowAmount = escrowAmount_;
+        emit EscrowAmountUpdated(escrowAmount_);
+    }
+
+    function setFeeRecipient(address payable feeRecipient_) external onlyOwner {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        $.feeRecipient = feeRecipient_;
+        emit FeeRecipientUpdated(feeRecipient_);
+    }
+
+    function setInitialVirtualReserveETH(uint256 initialVirtualReserveETH_) external onlyOwner {
+        if (initialVirtualReserveETH_ == 0) revert InvalidInitialETHReserve();
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        $.initialVirtualReserveETH = initialVirtualReserveETH_;
+        emit InitialVirtualReserveETHUpdated(initialVirtualReserveETH_);
+    }
+
+    function setMaxSupply(uint256 maxSupply_) external onlyOwner {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        $.maxSupply = maxSupply_;
+        emit MaxSupplyUpdated(maxSupply_);
+    }
+
+    function setProtocolFeePercentage(uint256 protocolFeePercentage_) external onlyOwner {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        $.protocolFeePercentage = protocolFeePercentage_;
+        emit ProtocolFeePercentageUpdated(protocolFeePercentage_);
+    }
+
+    function setRouter(address router_) external onlyOwner {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        $.router = router_;
+        emit RouterUpdated(router_);
     }
 
     function setSlippage(uint256 slippage_) external onlyOwner {
         if (slippage_ > FEE_PRECISION) revert MaxSlippage();
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         $.slippage = slippage_;
+        emit SlippageUpdated(slippage_);
     }
 
-    function addSalts(bytes32[] calldata newSalts, bool failOnInvalidSalt)
-        external
-        onlyOwner
-        returns (uint256 saltsAdded)
-    {
+    function setSupplyThreshold(uint256 supplyThreshold_) external onlyOwner {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        for (uint256 i; i < newSalts.length; i++) {
-            bytes32 salt = newSalts[i];
-            if (validateSalt(salt)) {
-                $.salts.push(salt);
-                unchecked {
-                    saltsAdded++;
-                }
-            } else if (failOnInvalidSalt) {
-                revert InvalidSalt(salt);
-            }
-        }
+        $.supplyThreshold = supplyThreshold_;
+        emit SupplyThresholdUpdated(supplyThreshold_);
     }
 
-    function createToken(string memory name, string memory symbol, string memory tokenUri)
-        external
-        payable
-        returns (address proxyAddress)
-    {
+    function setVoter(address voter_) external onlyOwner {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        proxyAddress = _createToken($, name, symbol, tokenUri, _nextSalt($));
+        $.voter = voter_;
+        emit VoterUpdated(voter_);
     }
 
-    function createToken(string memory name, string memory symbol, string memory tokenUri, bytes32 salt)
-        external
-        payable
-        returns (address proxyAddress)
-    {
+    function setZUSDAddress(address zUSD_) external onlyOwner {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        if (!validateSalt(salt)) {
-            revert InvalidSalt(salt);
-        }
-        proxyAddress = _createToken($, name, symbol, tokenUri, salt);
+        $.zUSD = zUSD_;
+        emit ZUSDAddressUpdated(zUSD_);
     }
 
     function trackAccountSpending(address account, int256 amount) external override {
@@ -252,17 +210,16 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         emit AccountSpendingTracked(account, token, amount);
     }
 
-    struct PairData {
-        address token;
-        address weth;
-        address zUSD;
-        address pair;
-        uint256 tokenAmount;
-        uint256 zUSDAmount;
-        uint256 amountToken;
-        uint256 amountETH;
-        uint256 amountZUSD;
-        uint256 liquidity;
+    function createToken(string memory name, string memory symbol, string memory tokenUri, bytes32 salt)
+        external
+        payable
+        returns (address proxyAddress)
+    {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        if (!validateSalt(salt)) {
+            revert InvalidSalt(salt);
+        }
+        proxyAddress = _createToken($, name, symbol, tokenUri, salt);
     }
 
     function createPair(uint256 tokenAmount, uint256 ethAmount)
@@ -270,24 +227,26 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         payable
         returns (uint256, uint256, uint256, uint256)
     {
+        address token = _msgSender();
+
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        if (!$.tokens.contains(_msgSender())) {
+        if (!$.tokens.contains(token)) {
             revert UnauthorizedCaller();
         }
 
         PairData memory pData;
         pData.tokenAmount = tokenAmount;
-        pData.token = _msgSender();
+        pData.token = token;
         pData.zUSD = $.zUSD;
 
         IRouter pairRouter = IRouter($.router);
         pData.weth = pairRouter.weth();
 
         // Swap eth for zUSD token
-        pData.zUSDAmount = swap(pairRouter, pData.weth, pData.zUSD, ethAmount);
+        pData.zUSDAmount = _swap($, pairRouter, pData.weth, pData.zUSD, ethAmount);
 
         // create pair
-        pData = _createPair(pairRouter, pData);
+        pData = _createPair($, pairRouter, pData);
 
         // add pair to dex pool list
         $.dexPairs.add(pData.pair);
@@ -299,11 +258,20 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         return (pData.amountToken, pData.amountETH, pData.amountZUSD, pData.liquidity);
     }
 
-    function getAccountSpending(uint48 window) external view returns (uint208 totalBuys, uint208 totalSells) {
+    function calculateFee(uint256 amount) external view returns (uint256) {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        return (amount * $.protocolFeePercentage) / FEE_PRECISION;
+    }
+
+    function getAccountSpending(address account, uint48 window)
+        external
+        view
+        returns (uint208 totalBuys, uint208 totalSells)
+    {
         uint48 from = uint48(block.timestamp) - window;
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        Checkpoints.Trace208 storage buys = $.buys[_msgSender()];
-        Checkpoints.Trace208 storage sells = $.sells[_msgSender()];
+        Checkpoints.Trace208 storage buys = $.buys[account];
+        Checkpoints.Trace208 storage sells = $.sells[account];
         {
             uint208 current = buys.latest();
             uint208 previous = buys.lowerLookup(from);
@@ -314,91 +282,6 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
             uint208 previous = sells.lowerLookup(from);
             totalSells = current - previous;
         }
-    }
-
-    function swap(IRouter pairRouter, address token0, address token1, uint256 ethAmount)
-        internal
-        returns (uint256 zUSDAmount)
-    {
-        IRouter.route[] memory route = new IRouter.route[](1);
-        route[0].from = token0;
-        route[0].to = token1;
-        route[0].stable = false;
-
-        uint256[] memory amounts = pairRouter.getAmountsOut(ethAmount, route);
-        uint256 amountOutMin = amounts[amounts.length - 1]; // Return the last element (zUSD amount)
-
-        amountOutMin = getAmountWithSlippage(amountOutMin);
-
-        // Swap ETH for zUSD with slippage tolerance
-        amounts = pairRouter.swapExactETHForTokens{value: ethAmount}(
-            amountOutMin,
-            route,
-            address(this),
-            block.timestamp + 300 // 5 minute deadline
-        );
-
-        zUSDAmount = amounts[1];
-    }
-
-    function _createToken(
-        DeJunglMemeFactoryStorage storage $,
-        string memory name,
-        string memory symbol,
-        string memory tokenUri,
-        bytes32 salt
-    ) internal returns (address proxyAddress) {
-        BeaconProxy proxy = new BeaconProxy{salt: salt}(beacon, "");
-        proxyAddress = address(proxy);
-
-        if (!_endsWith(proxyAddress, 0xBA5E)) {
-            revert InvalidProxyAddress(proxyAddress);
-        }
-
-        address deployer = _msgSender();
-
-        DeJunglMemeToken(payable(proxyAddress)).initialize{value: msg.value}(name, symbol, tokenUri, deployer);
-
-        $.tokens.add(proxyAddress);
-
-        emit TokenDeployed(proxyAddress, deployer, salt, $.initialVirtualReserveETH);
-    }
-
-    function _createPair(IRouter pairRouter, PairData memory pData) internal returns (PairData memory) {
-        IPairFactory pairFactory = IPairFactory(pairRouter.factory());
-        pData.pair = pairFactory.getPair(pData.token, pData.zUSD, false);
-        if (pData.pair == address(0)) {
-            pData.pair = pairFactory.createPair(pData.token, pData.zUSD, false);
-        }
-
-        // Transfer and approve tokens for adding liquidity
-        IERC20(pData.token).safeTransferFrom(_msgSender(), address(this), pData.tokenAmount);
-        IERC20(pData.token).approve(address(pairRouter), pData.tokenAmount);
-        IERC20(pData.zUSD).approve(address(pairRouter), pData.zUSDAmount);
-
-        (pData.amountToken, pData.amountZUSD, pData.liquidity) = pairRouter.addLiquidity(
-            pData.token,
-            pData.zUSD,
-            false,
-            pData.tokenAmount,
-            pData.zUSDAmount,
-            getAmountWithSlippage(pData.tokenAmount),
-            getAmountWithSlippage(pData.zUSDAmount),
-            BURN_ADDRESS,
-            block.timestamp + 300 // 5 minute deadline
-        );
-
-        return pData;
-    }
-
-    function getAmountWithSlippage(uint256 amount) internal view returns (uint256 amountWithSlippage) {
-        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        amountWithSlippage = amount - ((amount * $.slippage) / FEE_PRECISION);
-    }
-
-    function calculateFee(uint256 amount) public view returns (uint256) {
-        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        return (amount * $.protocolFeePercentage) / FEE_PRECISION;
     }
 
     function router() external view returns (address) {
@@ -441,11 +324,6 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         return $.initialVirtualReserveETH;
     }
 
-    function remainingSalts() external view returns (uint256) {
-        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        return $.salts.length;
-    }
-
     function tokens(uint256 index) external view returns (address) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         return $.tokens.at(index);
@@ -484,22 +362,91 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
 
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    function _nextSalt(DeJunglMemeFactoryStorage storage $) internal returns (bytes32 salt) {
-        uint256 len = $.salts.length;
-        if (len == 0) {
-            revert NoSaltAvailable();
+    function _createToken(
+        DeJunglMemeFactoryStorage storage $,
+        string memory name,
+        string memory symbol,
+        string memory tokenUri,
+        bytes32 salt
+    ) internal returns (address proxyAddress) {
+        BeaconProxy proxy = new BeaconProxy{salt: salt}(beacon, "");
+        proxyAddress = address(proxy);
+
+        address deployer = _msgSender();
+
+        DeJunglMemeToken(payable(proxyAddress)).initialize{value: msg.value}(name, symbol, tokenUri, deployer);
+
+        $.tokens.add(proxyAddress);
+
+        emit TokenDeployed(proxyAddress, deployer, salt, $.initialVirtualReserveETH);
+    }
+
+    function _createPair(DeJunglMemeFactoryStorage storage $, IRouter pairRouter, PairData memory pData)
+        internal
+        returns (PairData memory)
+    {
+        IPairFactory pairFactory = IPairFactory(pairRouter.factory());
+        pData.pair = pairFactory.getPair(pData.token, pData.zUSD, false);
+        if (pData.pair == address(0)) {
+            pData.pair = pairFactory.createPair(pData.token, pData.zUSD, false);
         }
-        unchecked {
-            salt = $.salts[len - 1];
-        }
-        $.salts.pop();
+
+        // Transfer and approve tokens for adding liquidity
+        IERC20(pData.token).safeTransferFrom(_msgSender(), address(this), pData.tokenAmount);
+        IERC20(pData.token).approve(address(pairRouter), pData.tokenAmount);
+        IERC20(pData.zUSD).approve(address(pairRouter), pData.zUSDAmount);
+
+        (pData.amountToken, pData.amountZUSD, pData.liquidity) = pairRouter.addLiquidity(
+            pData.token,
+            pData.zUSD,
+            false,
+            pData.tokenAmount,
+            pData.zUSDAmount,
+            _getAmountWithSlippage($, pData.tokenAmount),
+            _getAmountWithSlippage($, pData.zUSDAmount),
+            BURN_ADDRESS,
+            block.timestamp
+        );
+
+        return pData;
+    }
+
+    function _swap(
+        DeJunglMemeFactoryStorage storage $,
+        IRouter pairRouter,
+        address token0,
+        address token1,
+        uint256 ethAmount
+    ) internal returns (uint256 zUSDAmount) {
+        IRouter.route[] memory route = new IRouter.route[](1);
+        route[0].from = token0;
+        route[0].to = token1;
+
+        uint256[] memory amounts = pairRouter.getAmountsOut(ethAmount, route);
+        uint256 amountOutMin = amounts[amounts.length - 1]; // Return the last element (zUSD amount)
+
+        amountOutMin = _getAmountWithSlippage($, amountOutMin);
+
+        // Swap ETH for zUSD with slippage tolerance
+        amounts =
+            pairRouter.swapExactETHForTokens{value: ethAmount}(amountOutMin, route, address(this), block.timestamp);
+
+        zUSDAmount = amounts[1];
+    }
+
+    function _getAmountWithSlippage(DeJunglMemeFactoryStorage storage $, uint256 amount)
+        internal
+        view
+        returns (uint256 amountWithSlippage)
+    {
+        amountWithSlippage = amount - ((amount * $.slippage) / FEE_PRECISION);
     }
 
     function _endsWith(address _addr, uint16 _suffix) private pure returns (bool) {
         return uint16(uint160(_addr)) == _suffix;
     }
 
-    function _isDeployed(address contractAddress) internal view returns (bool isDeployed) {
+    function _isDeployed(address contractAddress) private view returns (bool isDeployed) {
         // slither-disable-next-line assembly
         assembly {
             let cs := extcodesize(contractAddress)

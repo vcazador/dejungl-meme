@@ -26,6 +26,8 @@ contract DeJunglMemeFactoryTest is Test {
 
     uint256 initVirtualReserveETH = 1 ether;
 
+    bytes32 testSalt;
+
     function setUp() public {
         vm.mockCall(router, abi.encodeCall(IRouter.weth, ()), abi.encode(weth));
 
@@ -43,18 +45,17 @@ contract DeJunglMemeFactoryTest is Test {
             )
         );
 
-        bytes32[] memory salts = new bytes32[](1);
-        salts[0] = bytes32(uint256(25816)); // _findSalt(address(proxy), 0);
+        factory = DeJunglMemeFactory(payable(address(proxy)));
+        testSalt = bytes32(uint256(25816)); // _findSalt(address(factory), 0);
 
-        factory = DeJunglMemeFactory(address(proxy));
-        factory.addSalts(salts, false);
+        vm.stopPrank();
     }
 
     function test_createToken() public {
         deal(alice, 1 ether);
         vm.startPrank(alice);
 
-        address tokenAddress = factory.createToken{value: 0.001 ether}("Test Token", "TEST", "test.png");
+        address tokenAddress = factory.createToken{value: 0.001 ether}("Test Token", "TEST", "test.png", testSalt);
 
         DeJunglMemeToken token = DeJunglMemeToken(payable(tokenAddress));
 
