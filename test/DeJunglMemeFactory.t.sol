@@ -21,10 +21,10 @@ contract DeJunglMemeFactoryTest is Test {
     address router = makeAddr("router");
     address escrow = makeAddr("escrow");
     address voter = makeAddr("voter");
+    address zUSD = makeAddr("zUSD");
     address payable feeRecipient = payable(makeAddr("feeReceipient"));
 
-    uint256 initVirtualReserveMeme = 0 ether;
-    uint256 initVirtualReserveETH = 0.8475714 ether;
+    uint256 initVirtualReserveETH = 1 ether;
 
     function setUp() public {
         vm.mockCall(router, abi.encodeCall(IRouter.weth, ()), abi.encode(weth));
@@ -39,7 +39,7 @@ contract DeJunglMemeFactoryTest is Test {
             address(factoryImpl),
             abi.encodeCall(
                 DeJunglMemeFactory.initialize,
-                (deployer, router, voter, escrow, feeRecipient, initVirtualReserveMeme, initVirtualReserveETH)
+                (deployer, router, voter, escrow, feeRecipient, zUSD, initVirtualReserveETH)
             )
         );
 

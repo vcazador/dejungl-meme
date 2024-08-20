@@ -15,13 +15,13 @@ import {EscrowVault} from "src/utils/EscrowVault.sol";
 contract DeployScript is Script {
     address constant ROUTER = 0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA;
     address constant VOTER = 0x82B4181a649e4B244C083475629E08Cc3C29c9DB;
+    address constant zUSD = 0xcCf17c47B8C21C9cFE1C31339F5EABA90dF62DDc;
     address payable constant FEE_RECIPIENT = payable(0xEBc5FF890E549203b9C1C7C290262fB40C3B790D); // TODO
 
     uint256 privateKey;
     address deployer;
 
-    uint256 initVirtualReserveMeme = 0 ether;
-    uint256 initVirtualReserveETH = 0.8475714 ether;
+    uint256 initVirtualReserveETH = 1 ether;
 
     function setUp() public {
         privateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -50,15 +50,7 @@ contract DeployScript is Script {
                 address(factoryImpl),
                 abi.encodeCall(
                     DeJunglMemeFactory.initialize,
-                    (
-                        deployer,
-                        ROUTER,
-                        VOTER,
-                        address(escrowProxy),
-                        FEE_RECIPIENT,
-                        initVirtualReserveMeme,
-                        initVirtualReserveETH
-                    )
+                    (deployer, ROUTER, VOTER, address(escrowProxy), FEE_RECIPIENT, zUSD, initVirtualReserveETH)
                 )
             );
 

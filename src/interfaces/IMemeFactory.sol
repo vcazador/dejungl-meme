@@ -10,11 +10,10 @@ interface IMemeFactory {
     function maxSupply() external view returns (uint256);
     function supplyThreshold() external view returns (uint256);
     function escrowAmount() external view returns (uint256);
-    function initialVirtualReserveMeme() external view returns (uint256);
     function initialVirtualReserveETH() external view returns (uint256);
     function trackAccountSpending(address account, int256 amount) external;
     function createPair(uint256 tokenAmount, uint256 ethAmount)
         external
         payable
-        returns (uint256 amountToken, uint256 amountETH, uint256 liquidity);
+        returns (uint256 amountToken, uint256 amountETH, uint256 amountZUSD, uint256 liquidity);
 }
