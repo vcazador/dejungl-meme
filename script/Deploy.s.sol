@@ -4,14 +4,14 @@ pragma solidity =0.8.25;
 import {Script, console} from "forge-std/Script.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {UpgradeableBeacon} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {DeJunglMemeToken} from "src/tokens/DeJunglMemeToken.sol";
-import {DeJunglMemeTokenBeacon} from "src/tokens/DeJunglMemeTokenBeacon.sol";
 import {DeJunglMemeFactory} from "src/DeJunglMemeFactory.sol";
 import {EscrowVault} from "src/utils/EscrowVault.sol";
 
-// forge script ./script/Deploy.s.sol --rpc-url $RPC_URL --slow --broadcast
+// forge script ./script/Deploy.s.sol --rpc-url $RPC_URL --slow --broadcast --verify
 contract DeployScript is Script {
     address constant ROUTER = 0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA;
     address constant VOTER = 0x82B4181a649e4B244C083475629E08Cc3C29c9DB;
@@ -44,7 +44,7 @@ contract DeployScript is Script {
                 new ERC1967Proxy(address(escrowImpl), abi.encodeCall(EscrowVault.initialize, (deployer)));
 
             DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
-            DeJunglMemeTokenBeacon beacon = new DeJunglMemeTokenBeacon(address(tokenImpl));
+            UpgradeableBeacon beacon = new UpgradeableBeacon(address(tokenImpl), deployer);
             DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(address(beacon));
             ERC1967Proxy proxy = new ERC1967Proxy(
                 address(factoryImpl),
@@ -69,7 +69,7 @@ contract DeployScript is Script {
                     // DeJunglMemeToken implementation has changed
                     address beaconAddress = _loadDeploymentAddress("DeJunglMemeTokenBeacon");
                     DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
-                    DeJunglMemeTokenBeacon(beaconAddress).upgradeTo(address(tokenImpl));
+                    UpgradeableBeacon(beaconAddress).upgradeTo(address(tokenImpl));
                     _saveDeploymentAddress("DeJunglMemeTokenImplementation", address(tokenImpl));
                 }
             }

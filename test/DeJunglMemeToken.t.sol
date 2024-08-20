@@ -2,11 +2,11 @@
 pragma solidity ^0.8.13;
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {UpgradeableBeacon} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 
 import {Test, console} from "forge-std/Test.sol";
 
 import {DeJunglMemeToken} from "src/tokens/DeJunglMemeToken.sol";
-import {DeJunglMemeTokenBeacon} from "src/tokens/DeJunglMemeTokenBeacon.sol";
 import {DeJunglMemeFactory} from "src/DeJunglMemeFactory.sol";
 import {EscrowVault} from "src/utils/EscrowVault.sol";
 
@@ -53,7 +53,7 @@ contract DeJunglMemeTokenTest is Test {
         escrow = EscrowVault(address(proxy2));
 
         DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
-        DeJunglMemeTokenBeacon beacon = new DeJunglMemeTokenBeacon(address(tokenImpl));
+        UpgradeableBeacon beacon = new UpgradeableBeacon(address(tokenImpl), deployer);
         DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(address(beacon));
         ERC1967Proxy proxy = new ERC1967Proxy(
             address(factoryImpl),

@@ -1,7 +1,29 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.25;
 
+import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+
 interface IMemeFactory {
+    /// @custom:storage-location erc7201:dejungle.storage.IMemeFactory
+    struct DeJunglMemeFactoryStorage {
+        address router;
+        address voter;
+        address escrow;
+        address payable feeRecipient;
+        address zUSD;
+        uint256 protocolFeePercentage;
+        uint256 maxSupply;
+        uint256 supplyThreshold;
+        uint256 escrowAmount;
+        uint256 initialVirtualReserveETH;
+        uint256 slippage;
+        EnumerableSet.AddressSet tokens;
+        EnumerableSet.AddressSet dexPairs;
+        mapping(address account => Checkpoints.Trace208) buys;
+        mapping(address account => Checkpoints.Trace208) sells;
+    }
+
     struct PairData {
         address token;
         address weth;
