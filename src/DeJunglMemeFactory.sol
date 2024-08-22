@@ -488,7 +488,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
      * @dev Provides the acceptable price slippage percentage for swaps and liquidity additions.
      * @return The current slippage tolerance.
      */
-    function slippege() external view returns (uint256) {
+    function slippage() external view returns (uint256) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         return $.slippage;
     }
