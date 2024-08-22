@@ -484,6 +484,16 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
     }
 
     /**
+     * @notice Returns the slippage tolerance used in liquidity transactions.
+     * @dev Provides the acceptable price slippage percentage for swaps and liquidity additions.
+     * @return The current slippage tolerance.
+     */
+    function slippege() external view returns (uint256) {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        return $.slippage;
+    }
+
+    /**
      * @notice Returns the supply threshold for liquidity management.
      * @dev Provides the point at which automatic liquidity provisions are triggered.
      * @return The supply threshold.
@@ -512,6 +522,26 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
     function tokensLength() external view returns (uint256) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         return $.tokens.length();
+    }
+
+    /**
+     * @notice Retrieves the address of the voting contract used for governance.
+     * @dev Returns the address of the contract responsible for managing governance interactions.
+     * @return The address of the voter contract.
+     */
+    function voter() external view returns (address) {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        return $.voter;
+    }
+
+    /**
+     * @notice Retrieves the address of the zUSD stablecoin used in the factory.
+     * @dev Returns the address of the stablecoin used for liquidity pairing and other operations.
+     * @return The address of the zUSD stablecoin.
+     */
+    function zUSD() external view returns (address) {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        return $.zUSD;
     }
 
     /**
