@@ -13,8 +13,8 @@ import {EscrowVault} from "src/utils/EscrowVault.sol";
 
 // forge script ./script/Deploy.s.sol --rpc-url $RPC_URL --slow --broadcast --verify
 contract DeployScript is Script {
-    address constant ROUTER = 0x8528308C9177A83cf9dcF80DC6cFA04FCDFC3FcA;
-    address constant VOTER = 0x82B4181a649e4B244C083475629E08Cc3C29c9DB;
+    address constant ROUTER = 0xbb4Bd284eE0C5075D97403e2e4b377b39E5BD324;
+    address constant VOTER = 0xf50aA5B9f6173B85B641b420B6401C381bA330AF;
     address constant zUSD = 0xcCf17c47B8C21C9cFE1C31339F5EABA90dF62DDc;
     address payable constant FEE_RECIPIENT = payable(0xEBc5FF890E549203b9C1C7C290262fB40C3B790D); // TODO
 
