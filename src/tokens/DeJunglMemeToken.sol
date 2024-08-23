@@ -206,6 +206,23 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
     }
 
     /**
+     * @notice Calculates the amount of tokens received in exchange for a given input amount.
+     * @dev This function considers the reserves of the pair and applies the necessary fees.
+     * @param amountIn The amount of the input token being exchanged.
+     * @param tokenIn The address of the input token. If this is the address of the contract, the input token is
+     * DeJunglMeme; otherwise, it is ETH.
+     * @return amountOut The amount of the output token that will be received after applying the fee.
+     */
+    function getAmountOut(uint256 amountIn, address tokenIn) external view returns (uint256) {
+        DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
+
+        bool isETHIn = tokenIn != address(this);
+        uint256 amountAfterFee = amountIn - (isETHIn ? factory.calculateFee(amountIn) : 0);
+        uint256 amountOut = isETHIn ? _calculatePurchaseReturn($, amountAfterFee) : _calculateSalesReturn($, amountIn);
+        return isETHIn ? amountOut : amountOut - factory.calculateFee(amountOut);
+    }
+
+    /**
      * @notice Returns the current amount of tokens held in escrow.
      * @return The amount of tokens currently held in escrow.
      */
@@ -247,7 +264,7 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
      */
     function getTokenPrice() external view returns (uint256) {
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
-        return ($.reserveETH + $.virtualReserveETH) * decimals() / $.reserveMeme;
+        return (_getTotalReserveETH($) * decimals()) / $.reserveMeme;
     }
 
     /**
@@ -423,6 +440,17 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
     }
 
     /**
+     * @notice Calculates the total reserve of ETH in the system.
+     * @dev This function returns the sum of the actual ETH reserve and a virtual reserve, which represent
+     * minimum liquidity for total supply.
+     * @param $ The storage object of the DeJunglMemeToken contract, which contains the ETH reserves.
+     * @return The total reserve of ETH, including both the actual reserve and the virtual reserve.
+     */
+    function _getTotalReserveETH(DeJunglMemeTokenStorage storage $) internal view returns (uint256) {
+        return $.reserveETH + $.virtualReserveETH;
+    }
+
+    /**
      * @notice Calculates the amount of tokens a user gets in return for their ETH deposit.
      * @dev Uses the bonding curve formula to determine the token output based on the current and virtual ETH reserves.
      *      It's crucial for ensuring the token price adjusts dynamically with each transaction.
@@ -435,7 +463,7 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         view
         returns (uint256 amountOut)
     {
-        uint256 newReserveETH = $.reserveETH + $.virtualReserveETH + ethDeposit;
+        uint256 newReserveETH = _getTotalReserveETH($) + ethDeposit;
         uint256 newReserveMeme = $.k / newReserveETH;
         amountOut = $.reserveMeme - newReserveMeme;
     }
@@ -455,7 +483,7 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
     {
         uint256 newReserveMeme = $.reserveMeme + amountIn;
         uint256 newReserveETH = $.k / newReserveMeme;
-        amountOut = $.reserveETH + $.virtualReserveETH - newReserveETH;
+        amountOut = _getTotalReserveETH($) - newReserveETH;
     }
 
     /**

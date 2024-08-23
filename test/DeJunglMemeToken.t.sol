@@ -122,6 +122,47 @@ contract DeJunglMemeTokenTest is Test {
         return amounts;
     }
 
+    function testETHInAmountOut() public {
+        uint256 amountOut = memeToken.getAmountOut(1 ether, address(0));
+        assertGt(amountOut, 490_000_000 ether);
+    }
+
+    function testETHOutAmountOut() public {
+        deal(alice, 100 ether);
+
+        // Alice buys MemeToken
+        vm.startPrank(alice);
+        memeToken.buy{value: 1 ether}(1 ether);
+        vm.stopPrank();
+
+        uint256 memeBalance = memeToken.balanceOf(alice);
+        uint256 amountOut = memeToken.getAmountOut(memeBalance, address(memeToken));
+        assertEq(amountOut, 0.98108999901 ether);
+    }
+
+    function testBuyMemeTokenEqualSteps() public {
+        uint256 ethStep = 0.1 ether;
+        uint256 maxEth = 2.4 ether;
+        uint256 totalEthSpent = 0;
+
+        for (uint256 i = 0; i < 24; i++) {
+            uint256 balanceBefore = memeToken.balanceOf(address(this));
+            vm.deal(address(this), ethStep);
+            memeToken.buy{value: ethStep}(0); // Replace `buy` with the correct function name if it's different
+            totalEthSpent += ethStep;
+            // console.log("ETH %s memeToken %s", totalEthSpent, memeToken.balanceOf(address(this)));
+        }
+
+        uint256 reserveETH = memeToken.getReserveETH();
+        uint256 reserveMeme = memeToken.getReserveMeme();
+        uint256 memeBalance = memeToken.balanceOf(address(memeToken));
+        assertEq(reserveETH, 0);
+        assertEq(reserveMeme, 0);
+        assertEq(memeBalance, reserveMeme);
+
+        assertEq(totalEthSpent, maxEth, "Total ETH spent should be 2.4 ETH");
+    }
+
     function testBuyMemeToken() public {
         deal(alice, 100 ether);
 
