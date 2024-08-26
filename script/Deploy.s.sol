@@ -10,12 +10,14 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 import {DeJunglMemeToken} from "src/tokens/DeJunglMemeToken.sol";
 import {DeJunglMemeFactory} from "src/DeJunglMemeFactory.sol";
 import {EscrowVault} from "src/utils/EscrowVault.sol";
+import {TraderRewards} from "src/rewards/TraderRewards.sol";
 
 // forge script ./script/Deploy.s.sol --rpc-url $RPC_URL --slow --broadcast --verify
 contract DeployScript is Script {
     address constant ROUTER = 0xbb4Bd284eE0C5075D97403e2e4b377b39E5BD324;
     address constant VOTER = 0xf50aA5B9f6173B85B641b420B6401C381bA330AF;
     address constant zUSD = 0xcCf17c47B8C21C9cFE1C31339F5EABA90dF62DDc;
+    address constant JUNGL = 0x96Ebd195d703b874e606F6225B89738886282e7F;
     address payable constant FEE_RECIPIENT = payable(0xEBc5FF890E549203b9C1C7C290262fB40C3B790D); // TODO
 
     uint256 privateKey;
@@ -31,6 +33,7 @@ contract DeployScript is Script {
     function run() public {
         vm.startBroadcast(privateKey);
         _deployMemeFactory();
+        _deployTraderRewardsDistributor();
     }
 
     function _deployMemeFactory() internal returns (address factoryAddress) {
@@ -85,6 +88,32 @@ contract DeployScript is Script {
                     UUPSUpgradeable(factoryAddress).upgradeToAndCall(address(factoryImpl), "");
                     _saveDeploymentAddress("DeJunglMemeFactoryImplementation", address(factoryImpl));
                 }
+            }
+        }
+    }
+
+    function _deployTraderRewardsDistributor() internal {
+        address rewardsAddress = _loadDeploymentAddress("TraderRewards");
+
+        if (rewardsAddress == address(0) || !_isDeployed(rewardsAddress)) {
+            TraderRewards rewards = new TraderRewards(JUNGL, deployer);
+            rewards.updateOffchainComputer(deployer);
+            _saveDeploymentAddress("TraderRewards", address(rewards));
+        } else {
+            vm.stopBroadcast();
+
+            TraderRewards newRewards = new TraderRewards(JUNGL, deployer);
+            bytes memory deployableCode = _getDeployedCode(address(newRewards));
+
+            vm.startBroadcast(privateKey);
+
+            bytes memory deployedCode = _getDeployedCode(rewardsAddress);
+
+            if (keccak256(deployedCode) != keccak256(deployableCode)) {
+                // TraderRewards implementation has changed
+                TraderRewards rewards = new TraderRewards(JUNGL, deployer);
+                rewards.updateOffchainComputer(deployer);
+                _saveDeploymentAddress("TraderRewards", address(rewards));
             }
         }
     }
