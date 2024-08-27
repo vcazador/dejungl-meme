@@ -38,7 +38,7 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
 
     // keccak256(abi.encode(uint256(keccak256("dejungle.storage.RewardVault")) - 1)) & ~bytes32(uint256(0xff))
     bytes32 private constant RewardVaultStorageLocation =
-        0x8f15531755499675ef9d2087336901da5facec64d69a488ffe423a5d814cc300;
+        0xe5b68798d6b8748fbef32b03801632651091c73338e914df6df468cdbb74d200;
 
     function _getRewardVaultStorageLocation() private pure returns (RewardVaultStorage storage $) {
         assembly {
@@ -54,7 +54,7 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
     );
 
     error ZeroAddress();
-    error UnAuthorized();
+    error Unauthorized();
     error OnePerHour();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -199,9 +199,9 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
         gauge = voter.gauges(pair);
     }
 
-    function _onlyAllowed() internal {
+    function _onlyAllowed() internal view {
         RewardVaultStorage storage $ = _getRewardVaultStorageLocation();
-        if (_msgSender() != owner() || _msgSender() != $.manager) revert UnAuthorized();
+        if (_msgSender() != owner() || _msgSender() != $.manager) revert Unauthorized();
     }
 
     function _authorizeUpgrade(address) internal override onlyOwner {}

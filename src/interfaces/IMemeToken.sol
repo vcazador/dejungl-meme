@@ -66,9 +66,9 @@ interface IMemeToken {
     function getRemainingAmount() external view returns (uint256);
     function getReserveETH() external view returns (uint256);
     function getReserveMeme() external view returns (uint256);
+    function getStoredTokenInfo() external pure returns (DeJunglMemeTokenStorage memory);
     function getTokenPrice() external view returns (uint256);
     function getVirtualReserveETH() external view returns (uint256);
     function liquidityAdded() external view returns (bool);
     function tokenURI() external view returns (string memory);
-    function getStoredTokenInfo() external pure returns (DeJunglMemeTokenStorage memory);
 }

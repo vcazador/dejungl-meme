@@ -97,16 +97,16 @@ contract DeployScript is Script {
     }
 
     function _deployTraderRewardsDistributor() internal {
+        address factoryAddress = _loadDeploymentAddress("DeJunglMemeFactory");
         address rewardsAddress = _loadDeploymentAddress("TraderRewards");
 
         if (rewardsAddress == address(0) || !_isDeployed(rewardsAddress)) {
-            TraderRewards rewards = new TraderRewards(JUNGL, deployer);
-            rewards.updateOffchainComputer(deployer);
+            TraderRewards rewards = new TraderRewards(factoryAddress, JUNGL, deployer);
             _saveDeploymentAddress("TraderRewards", address(rewards));
         } else {
             vm.stopBroadcast();
 
-            TraderRewards newRewards = new TraderRewards(JUNGL, deployer);
+            TraderRewards newRewards = new TraderRewards(factoryAddress, JUNGL, deployer);
             bytes memory deployableCode = _getDeployedCode(address(newRewards));
 
             vm.startBroadcast(privateKey);
@@ -115,8 +115,7 @@ contract DeployScript is Script {
 
             if (keccak256(deployedCode) != keccak256(deployableCode)) {
                 // TraderRewards implementation has changed
-                TraderRewards rewards = new TraderRewards(JUNGL, deployer);
-                rewards.updateOffchainComputer(deployer);
+                TraderRewards rewards = new TraderRewards(factoryAddress, JUNGL, deployer);
                 _saveDeploymentAddress("TraderRewards", address(rewards));
             }
         }

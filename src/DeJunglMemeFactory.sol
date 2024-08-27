@@ -262,12 +262,19 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         if (!$.tokens.contains(token)) {
             revert UnauthorizedCaller();
         }
+        uint48 timestamp = uint48(block.timestamp);
         if (amount > 0) {
-            uint208 totalBuys = $.buys[account].latest() + uint208(uint256(amount));
-            $.buys[account].push(uint48(block.timestamp), totalBuys);
+            uint208 amount208 = uint208(uint256(amount));
+            uint208 totalBuys = $.buys[account].latest() + amount208;
+            $.buys[account].push(timestamp, totalBuys);
+            totalBuys = $.totalBuys.latest() + amount208;
+            $.totalBuys.push(timestamp, totalBuys);
         } else {
-            uint208 totalSells = $.sells[account].latest() + uint208(uint256(-amount));
-            $.sells[account].push(uint48(block.timestamp), totalSells);
+            uint208 amount208 = uint208(uint256(-amount));
+            uint208 totalSells = $.sells[account].latest() + amount208;
+            $.sells[account].push(timestamp, totalSells);
+            totalSells = $.totalSells.latest() + amount208;
+            $.totalSells.push(timestamp, totalSells);
         }
         emit AccountSpendingTracked(account, token, amount);
     }
@@ -363,20 +370,56 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         view
         returns (uint208 totalBuys, uint208 totalSells)
     {
-        uint48 from = uint48(block.timestamp) - window;
+        uint48 to = uint48(block.timestamp);
+        uint48 from = to - window;
+        (totalBuys, totalSells) = getAccountSpending(account, from, to);
+    }
+
+    /**
+     * @notice Retrieves the total buys and sells for a specific account within a custom time range.
+     * @dev Calculates the buying and selling activities of an account by accessing checkpointed data within the
+     *      specified time range.
+     * @param account The address of the account whose spending history is being queried.
+     * @param from The starting timestamp of the query period.
+     * @param to The ending timestamp of the query period.
+     * @return totalBuys The total volume of buys by the account within the time range.
+     * @return totalSells The total volume of sells by the account within the time range.
+     */
+    function getAccountSpending(address account, uint48 from, uint48 to)
+        public
+        view
+        returns (uint208 totalBuys, uint208 totalSells)
+    {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        Checkpoints.Trace208 storage buys = $.buys[account];
-        Checkpoints.Trace208 storage sells = $.sells[account];
-        {
-            uint208 current = buys.latest();
-            uint208 previous = buys.lowerLookup(from);
-            totalBuys = current - previous;
-        }
-        {
-            uint208 current = sells.latest();
-            uint208 previous = sells.lowerLookup(from);
-            totalSells = current - previous;
-        }
+        (totalBuys, totalSells) = _getTotalSpending($.buys[account], $.sells[account], from, to);
+    }
+
+    /**
+     * @notice Retrieves the total buys and sells across all accounts within a specified recent time window.
+     * @dev Aggregates total buys and sells from all accounts using a time window relative to the current block
+     * timestamp.
+     * @param window The duration in seconds from the current time to look back for transactions.
+     * @return totalBuys The total volume of buys across all accounts within the window.
+     * @return totalSells The total volume of sells across all accounts within the window.
+     */
+    function getTotalSpending(uint48 window) external view returns (uint208 totalBuys, uint208 totalSells) {
+        uint48 to = uint48(block.timestamp);
+        uint48 from = to - window;
+        (totalBuys, totalSells) = getTotalSpending(from, to);
+    }
+
+    /**
+     * @notice Retrieves the total buys and sells across all accounts between two timestamps.
+     * @dev Computes the aggregate buying and selling activities by querying checkpointed data from a specific time
+     *      range.
+     * @param from The starting timestamp of the query period.
+     * @param to The ending timestamp of the query period.
+     * @return totalBuys The aggregated volume of buys across all accounts in the specified period.
+     * @return totalSells The aggregated volume of sells across all accounts in the specified period.
+     */
+    function getTotalSpending(uint48 from, uint48 to) public view returns (uint208 totalBuys, uint208 totalSells) {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        (totalBuys, totalSells) = _getTotalSpending($.totalBuys, $.totalSells, from, to);
     }
 
     /**
@@ -687,6 +730,34 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         returns (uint256 amountWithSlippage)
     {
         amountWithSlippage = amount - ((amount * $.slippage) / FEE_PRECISION);
+    }
+
+    /**
+     * @dev Internal function to compute the total buys and sells from checkpointed data between two timestamps.
+     *      This function directly accesses the storage structure for buys and sells to calculate the total spending.
+     * @param buys The storage pointer to the buy checkpoints.
+     * @param sells The storage pointer to the sell checkpoints.
+     * @param from The starting timestamp of the query period.
+     * @param to The ending timestamp of the query period.
+     * @return totalBuys The calculated total buys within the specified time frame.
+     * @return totalSells The calculated total sells within the specified time frame.
+     */
+    function _getTotalSpending(
+        Checkpoints.Trace208 storage buys,
+        Checkpoints.Trace208 storage sells,
+        uint48 from,
+        uint48 to
+    ) internal view returns (uint208 totalBuys, uint208 totalSells) {
+        {
+            uint208 previous = buys.lowerLookup(from);
+            uint208 current = buys.upperLookup(to);
+            totalBuys = current - previous;
+        }
+        {
+            uint208 previous = sells.lowerLookup(from);
+            uint208 current = sells.upperLookup(to);
+            totalSells = current - previous;
+        }
     }
 
     /**

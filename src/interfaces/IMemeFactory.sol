@@ -22,6 +22,8 @@ interface IMemeFactory {
         EnumerableSet.AddressSet dexPairs;
         mapping(address account => Checkpoints.Trace208) buys;
         mapping(address account => Checkpoints.Trace208) sells;
+        Checkpoints.Trace208 totalBuys;
+        Checkpoints.Trace208 totalSells;
     }
 
     struct PairData {
@@ -129,6 +131,14 @@ interface IMemeFactory {
         external
         view
         returns (uint208 totalBuys, uint208 totalSells);
+
+    function getAccountSpending(address account, uint48 from, uint48 to)
+        external
+        view
+        returns (uint208 totalBuys, uint208 totalSells);
+
+    function getTotalSpending(uint48 window) external view returns (uint208 totalBuys, uint208 totalSells);
+    function getTotalSpending(uint48 from, uint48 to) external view returns (uint208 totalBuys, uint208 totalSells);
 
     function getCodeHash() external view returns (bytes32);
     function initialVirtualReserveETH() external view returns (uint256);
