@@ -116,12 +116,12 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
 
         // TODO: notify _tradingReward to trade distributor
 
-        uint256 totalEmissionsReward = _updateEmssionReward($, _emissionsReward);
+        uint256 totalEmissionsReward = _updateEmissionReward($, _emissionsReward);
 
         emit RewardsUpdated(_tradingReward, totalEmissionsReward);
     }
 
-    function _updateEmssionReward(RewardVaultStorage storage $, uint256 totalEmissionsReward)
+    function _updateEmissionReward(RewardVaultStorage storage $, uint256 totalEmissionsReward)
         internal
         returns (uint256)
     {
