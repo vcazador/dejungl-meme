@@ -125,7 +125,7 @@ contract DeJunglMemeTokenTest is Test {
         return amounts;
     }
 
-    function testETHInAmountOut() public {
+    function testETHInAmountOut() public view {
         uint256 amountOut = memeToken.getAmountOut(1 ether, address(0));
         assertGt(amountOut, 490_000_000 ether);
     }
@@ -149,9 +149,8 @@ contract DeJunglMemeTokenTest is Test {
         uint256 totalEthSpent = 0;
 
         for (uint256 i = 0; i < 24; i++) {
-            uint256 balanceBefore = memeToken.balanceOf(address(this));
             vm.deal(address(this), ethStep);
-            memeToken.buy{value: ethStep}(0); // Replace `buy` with the correct function name if it's different
+            memeToken.buy{value: ethStep}(0);
             totalEthSpent += ethStep;
             // console.log("ETH %s memeToken %s", totalEthSpent, memeToken.balanceOf(address(this)));
         }

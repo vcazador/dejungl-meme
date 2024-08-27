@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity =0.8.25;
 
+import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+import {IGauge} from "src/interfaces/IGauge.sol";
 import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
 import {IPairFactory} from "src/interfaces/IPairFactory.sol";
+import {ITraderRewards} from "src/interfaces/ITraderRewards.sol";
 import {IVoter} from "src/interfaces/IVoter.sol";
-import {IGuage} from "src/interfaces/IGuage.sol";
 
-import "./Epoch.sol";
+import {EPOCH_DURATION, HOUR} from "src/utils/Epoch.sol";
 
 contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
     using SafeERC20 for IERC20;
@@ -27,6 +28,7 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
     struct RewardVaultStorage {
         address factory;
         address pairFactory;
+        address traderRewards;
         address voter;
         address WETH;
         address manager;
@@ -48,6 +50,7 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
 
     event EmissionBatchLenUpdated(uint256 length);
     event ManagerUpdated(address indexed manager);
+    event TraderRewardsUpdated(address indexed traderRewards);
     event RewardsUpdated(uint256 tradingReward, uint256 emissionReward);
     event EmissionsRewardCollected(
         address indexed token, address indexed pool, address indexed gauge, uint256 rewardAmount
@@ -66,13 +69,14 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
         address initialOwner,
         address factory,
         address pairFactory,
+        address traderRewards,
         address voter,
         address weth,
         address token
     ) public initializer {
         if (
-            initialOwner == address(0) || factory == address(0) || pairFactory == address(0) || weth == address(0)
-                || token == address(0)
+            initialOwner == address(0) || factory == address(0) || pairFactory == address(0)
+                || traderRewards == address(0) || weth == address(0) || token == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -83,6 +87,7 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
         RewardVaultStorage storage $ = _getRewardVaultStorageLocation();
         $.factory = factory;
         $.pairFactory = pairFactory;
+        $.traderRewards = traderRewards;
         $.voter = voter;
         $.WETH = weth;
         $.rewardToken = token;
@@ -101,6 +106,12 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
         emit ManagerUpdated(_manager);
     }
 
+    function setTraderRewards(address _traderRewards) external onlyOwner {
+        RewardVaultStorage storage $ = _getRewardVaultStorageLocation();
+        $.traderRewards = _traderRewards;
+        emit TraderRewardsUpdated(_traderRewards);
+    }
+
     function setEmissionBatch(uint256 len) external {
         RewardVaultStorage storage $ = _getRewardVaultStorageLocation();
         $.emissionBatchLen = len;
@@ -108,13 +119,18 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
     }
 
     function notifyRewardAmount(uint256 _tradingReward, uint256 _emissionsReward) external onlyAllowed {
-        uint256 totalRewards = _tradingReward + _emissionsReward;
-
         RewardVaultStorage storage $ = _getRewardVaultStorageLocation();
 
-        IERC20($.rewardToken).safeTransferFrom(address(this), _msgSender(), totalRewards);
+        uint256 totalRewards = _tradingReward + _emissionsReward;
+        address rewardToken = $.rewardToken;
+        address traderRewards = $.traderRewards;
 
-        // TODO: notify _tradingReward to trade distributor
+        IERC20(rewardToken).safeTransferFrom(_msgSender(), address(this), totalRewards);
+        IERC20(rewardToken).forceApprove(traderRewards, _tradingReward);
+
+        if (_tradingReward != 0) {
+            ITraderRewards(traderRewards).depositReward(_tradingReward);
+        }
 
         uint256 totalEmissionsReward = _updateEmissionReward($, _emissionsReward);
 
@@ -165,7 +181,7 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
                     (address pair, address gauge) = _getPairAndGauge($, token);
 
                     IERC20(rewardToken).approve(gauge, amount);
-                    IGuage(gauge).notifyRewardAmount(rewardToken, amount);
+                    IGauge(gauge).notifyRewardAmount(rewardToken, amount);
                     emittedLen++;
 
                     emit EmissionsRewardCollected(token, pair, gauge, amount);
@@ -187,6 +203,14 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
         } else {
             execPayload = abi.encode(IMemeFactory($.factory).tokensLength());
         }
+    }
+
+    function manager() external view returns (address) {
+        return _getRewardVaultStorageLocation().manager;
+    }
+
+    function traderRewards() external view returns (address) {
+        return _getRewardVaultStorageLocation().traderRewards;
     }
 
     function _getPairAndGauge(RewardVaultStorage storage $, address token)

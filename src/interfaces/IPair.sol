@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity =0.8.25;
 
 interface IPair {
     function initialize(address _token0, address _token1, bool _stable) external;

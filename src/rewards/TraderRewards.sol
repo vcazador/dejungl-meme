@@ -5,6 +5,9 @@ import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeE
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
+import {ITraderRewards} from "src/interfaces/ITraderRewards.sol";
+
+import {EPOCH_DURATION, DISTRIBUTION_PERIOD} from "src/utils/Epoch.sol";
 
 /**
  * @title Trader Rewards Contract
@@ -12,20 +15,17 @@ import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
  *      Rewards are calculated daily and distributed based on the volume of trading activity.
  * @notice This contract allows users to claim rewards for trading activities tracked via the connected factory.
  */
-contract TraderRewards is Ownable {
+contract TraderRewards is Ownable, ITraderRewards {
     using SafeERC20 for IERC20;
 
     address public immutable factory;
     address public immutable rewardToken;
 
+    address public depositor;
+
     mapping(address => uint256) public totalClaimed;
-    mapping(uint256 => uint256) public rewardPerDay;
+    mapping(uint256 => uint256) public rewardPerPeriod;
     mapping(address => uint48) public nextUserClaim;
-
-    event RewardClaimed(address indexed user, uint256 amount, uint256 totalClaimed);
-    event RewardDeposited(address indexed depositor, uint256 amount, uint256 from, uint256 to);
-
-    error InvalidDistributionWindow();
 
     /**
      * @notice Initializes the TraderRewards contract with necessary addresses and owner.
@@ -37,6 +37,16 @@ contract TraderRewards is Ownable {
     constructor(address _factory, address _rewardToken, address initialOwner) Ownable(initialOwner) {
         factory = _factory;
         rewardToken = _rewardToken;
+        depositor = initialOwner;
+    }
+
+    /**
+     * @notice Sets the depositor address for the contract.
+     * @dev Only the owner can set the depositor address.
+     * @param _depositor The address to set as the depositor.
+     */
+    function setDepositor(address _depositor) external onlyOwner {
+        depositor = _depositor;
     }
 
     /**
@@ -45,9 +55,9 @@ contract TraderRewards is Ownable {
      * @param amount The total amount of rewards to be distributed.
      */
     function depositReward(uint256 amount) external {
-        uint256 today = _today();
-        uint256 from = today + 1 days;
-        uint256 to = from + 7 days;
+        uint256 today = _currentPeriod();
+        uint256 from = today + DISTRIBUTION_PERIOD;
+        uint256 to = from + EPOCH_DURATION;
         depositReward(amount, from, to);
     }
 
@@ -58,36 +68,41 @@ contract TraderRewards is Ownable {
      * @param from The start timestamp of the reward distribution period.
      * @param to The end timestamp of the reward distribution period.
      * @custom:error InvalidDistributionWindow Thrown if the specified distribution period is not valid.
+     * @custom:error Unauthorized Thrown if the caller is not the depositor or the owner.
      */
-    function depositReward(uint256 amount, uint256 from, uint256 to) public onlyOwner {
+    function depositReward(uint256 amount, uint256 from, uint256 to) public {
+        if (msg.sender != depositor && msg.sender != owner()) {
+            revert Unauthorized();
+        }
+
         IERC20(rewardToken).safeTransferFrom(msg.sender, address(this), amount);
 
-        uint256 today = _today();
-        uint256 firstDay = _midnight(from);
-        uint256 numDays = (to - from) / 1 days;
+        uint256 today = _currentPeriod();
+        uint256 firstPeriod = _startOfPeriod(from);
+        uint256 periods = (to - from) / DISTRIBUTION_PERIOD;
 
-        if (firstDay <= today || numDays == 0) {
+        if (firstPeriod <= today || periods == 0) {
             revert InvalidDistributionWindow();
         }
 
-        uint256 amountPerDay = amount / numDays;
+        uint256 amountPerPeriod = amount / periods;
         uint256 remainingAmount = amount;
-        uint256 day = firstDay;
+        uint256 period = firstPeriod;
 
-        while (numDays != 0) {
-            rewardPerDay[day] += amountPerDay;
+        while (periods != 0) {
+            rewardPerPeriod[period] += amountPerPeriod;
             unchecked {
-                numDays--;
-                remainingAmount -= amountPerDay;
-                day += 1 days;
+                periods--;
+                remainingAmount -= amountPerPeriod;
+                period += DISTRIBUTION_PERIOD;
             }
         }
 
         if (remainingAmount != 0) {
-            rewardPerDay[firstDay] += remainingAmount;
+            rewardPerPeriod[firstPeriod] += remainingAmount;
         }
 
-        emit RewardDeposited(msg.sender, amount, firstDay, day);
+        emit RewardDeposited(msg.sender, amount, firstPeriod, period);
     }
 
     /**
@@ -99,7 +114,7 @@ contract TraderRewards is Ownable {
      */
     function claimableReward(address account) public view returns (uint256 amount, uint256 volume) {
         uint48 from = nextUserClaim[account];
-        uint48 today = _today();
+        uint48 today = _currentPeriod();
         if (from >= today) {
             return (0, 0);
         }
@@ -110,7 +125,7 @@ contract TraderRewards is Ownable {
         }
         (totalBuys, totalSells) = IMemeFactory(factory).getTotalSpending(from, today - 1);
         uint256 totalVolume = totalBuys + totalSells;
-        amount = volume * rewardPerDay[today] / totalVolume;
+        amount = volume * rewardPerPeriod[today] / totalVolume;
     }
 
     /**
@@ -123,7 +138,7 @@ contract TraderRewards is Ownable {
 
         (amount,) = claimableReward(user);
 
-        nextUserClaim[user] = _today();
+        nextUserClaim[user] = _currentPeriod();
 
         uint256 _totalClaimed = totalClaimed[user];
         uint256 newTotalClaimed = _totalClaimed + amount;
@@ -137,21 +152,21 @@ contract TraderRewards is Ownable {
     }
 
     /**
-     * @notice Gets today's date rounded down to the nearest day.
-     * @dev Helper function to obtain the timestamp at midnight of the current day.
-     * @return The timestamp at midnight today.
+     * @notice Gets the current period.
+     * @dev Helper function to obtain the timestamp at the start of the current period.
+     * @return The timestamp at the start of the current period.
      */
-    function _today() private view returns (uint48) {
-        return _midnight(block.timestamp);
+    function _currentPeriod() private view returns (uint48) {
+        return _startOfPeriod(block.timestamp);
     }
 
     /**
-     * @notice Converts a timestamp to the start of the day (midnight).
-     * @dev Helper function to round down a timestamp to the nearest day.
+     * @notice Converts a timestamp to the start of the period.
+     * @dev Helper function to round down a timestamp to the nearest period.
      * @param timestamp The timestamp to convert.
-     * @return The timestamp at midnight of the given day.
+     * @return The timestamp at the start of the given period.
      */
-    function _midnight(uint256 timestamp) private pure returns (uint48) {
-        return uint48((timestamp / 1 days) * 1 days);
+    function _startOfPeriod(uint256 timestamp) private pure returns (uint48) {
+        return uint48((timestamp / DISTRIBUTION_PERIOD) * DISTRIBUTION_PERIOD);
     }
 }

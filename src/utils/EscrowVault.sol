@@ -4,14 +4,13 @@ pragma solidity =0.8.25;
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IPairFactory} from "src/interfaces/IPairFactory.sol";
-import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
-import {IVoter} from "src/interfaces/IVoter.sol";
-import {IBribe} from "src/interfaces/IBribe.sol";
+import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "./Epoch.sol";
+import {EPOCH_DURATION} from "src/utils/Epoch.sol";
+import {IBribe} from "src/interfaces/IBribe.sol";
+import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
+import {IPairFactory} from "src/interfaces/IPairFactory.sol";
+import {IVoter} from "src/interfaces/IVoter.sol";
 
 /**
  * @title Escrow Vault

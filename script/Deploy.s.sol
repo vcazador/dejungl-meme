@@ -10,6 +10,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 import {DeJunglMemeToken} from "src/tokens/DeJunglMemeToken.sol";
 import {DeJunglMemeFactory} from "src/DeJunglMemeFactory.sol";
 import {EscrowVault} from "src/utils/EscrowVault.sol";
+import {RewardVault} from "src/rewards/RewardVault.sol";
 import {TraderRewards} from "src/rewards/TraderRewards.sol";
 
 // forge script ./script/Deploy.s.sol --rpc-url $RPC_URL --slow --broadcast --verify
@@ -34,8 +35,19 @@ contract DeployScript is Script {
 
     function run() public {
         vm.startBroadcast(privateKey);
+
         _deployMemeFactory();
-        _deployTraderRewardsDistributor();
+
+        address traderRewards = _deployTraderRewardsDistributor();
+        address rewardVault = _deployRewardVault();
+
+        if (TraderRewards(traderRewards).depositor() == rewardVault) {
+            TraderRewards(traderRewards).setDepositor(rewardVault);
+        }
+
+        if (RewardVault(rewardVault).traderRewards() == traderRewards) {
+            RewardVault(rewardVault).setTraderRewards(traderRewards);
+        }
     }
 
     function _deployMemeFactory() internal returns (address factoryAddress) {
@@ -96,13 +108,15 @@ contract DeployScript is Script {
         }
     }
 
-    function _deployTraderRewardsDistributor() internal {
+    function _deployTraderRewardsDistributor() internal returns (address rewardsAddress) {
         address factoryAddress = _loadDeploymentAddress("DeJunglMemeFactory");
-        address rewardsAddress = _loadDeploymentAddress("TraderRewards");
+
+        rewardsAddress = _loadDeploymentAddress("TraderRewards");
 
         if (rewardsAddress == address(0) || !_isDeployed(rewardsAddress)) {
             TraderRewards rewards = new TraderRewards(factoryAddress, JUNGL, deployer);
-            _saveDeploymentAddress("TraderRewards", address(rewards));
+            rewardsAddress = address(rewards);
+            _saveDeploymentAddress("TraderRewards", rewardsAddress);
         } else {
             vm.stopBroadcast();
 
@@ -116,7 +130,43 @@ contract DeployScript is Script {
             if (keccak256(deployedCode) != keccak256(deployableCode)) {
                 // TraderRewards implementation has changed
                 TraderRewards rewards = new TraderRewards(factoryAddress, JUNGL, deployer);
-                _saveDeploymentAddress("TraderRewards", address(rewards));
+                rewardsAddress = address(rewards);
+                _saveDeploymentAddress("TraderRewards", rewardsAddress);
+            }
+        }
+    }
+
+    function _deployRewardVault() internal returns (address vaultAddress) {
+        vaultAddress = _loadDeploymentAddress("RewardVault");
+
+        address factoryAddress = _loadDeploymentAddress("DeJunglMemeFactory");
+        address traderRewardsAddress = _loadDeploymentAddress("TraderRewards");
+
+        if (vaultAddress == address(0) || !_isDeployed(vaultAddress)) {
+            RewardVault vaultImpl = new RewardVault();
+            ERC1967Proxy vaultProxy = new ERC1967Proxy(
+                address(vaultImpl),
+                abi.encodeCall(
+                    RewardVault.initialize,
+                    (deployer, factoryAddress, PAIR_FACTORY, traderRewardsAddress, VOTER, WETH, JUNGL)
+                )
+            );
+
+            vaultAddress = address(vaultProxy);
+
+            _saveDeploymentAddress("RewardVaultImplementation", address(vaultImpl));
+            _saveDeploymentAddress("RewardVault", address(vaultProxy));
+        } else {
+            {
+                bytes memory deployedCode = _getDeployedCode(vaultAddress);
+                bytes memory deployableCode = vm.getDeployedCode("RewardVault");
+
+                if (keccak256(deployedCode) != keccak256(deployableCode)) {
+                    // RewardVault implementation has changed
+                    RewardVault vaultImpl = new RewardVault();
+                    UUPSUpgradeable(vaultAddress).upgradeToAndCall(address(vaultImpl), "");
+                    _saveDeploymentAddress("RewardVaultImplementation", address(vaultImpl));
+                }
             }
         }
     }
