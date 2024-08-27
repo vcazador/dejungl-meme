@@ -49,7 +49,10 @@ contract DeJunglMemeTokenTest is Test {
         address factoryAddress = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 5);
 
         EscrowVault escrowImpl = new EscrowVault();
-        ERC1967Proxy proxy2 = new ERC1967Proxy(address(escrowImpl), abi.encodeCall(EscrowVault.initialize, (deployer)));
+        ERC1967Proxy proxy2 = new ERC1967Proxy(
+            address(escrowImpl),
+            abi.encodeCall(EscrowVault.initialize, (deployer, factoryAddress, pairFactory, voter, weth))
+        );
         escrow = EscrowVault(address(proxy2));
 
         DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);

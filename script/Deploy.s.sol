@@ -19,6 +19,8 @@ contract DeployScript is Script {
     address constant zUSD = 0xcCf17c47B8C21C9cFE1C31339F5EABA90dF62DDc;
     address constant JUNGL = 0x96Ebd195d703b874e606F6225B89738886282e7F;
     address payable constant FEE_RECIPIENT = payable(0xEBc5FF890E549203b9C1C7C290262fB40C3B790D); // TODO
+    address constant WETH = 0x4200000000000000000000000000000000000006;
+    address constant PAIR_FACTORY = 0x7c676073854fB01a960a4AD8F72321C63F496353;
 
     uint256 privateKey;
     address deployer;
@@ -43,8 +45,10 @@ contract DeployScript is Script {
             factoryAddress = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 5);
 
             EscrowVault escrowImpl = new EscrowVault();
-            ERC1967Proxy escrowProxy =
-                new ERC1967Proxy(address(escrowImpl), abi.encodeCall(EscrowVault.initialize, (deployer)));
+            ERC1967Proxy escrowProxy = new ERC1967Proxy(
+                address(escrowImpl),
+                abi.encodeCall(EscrowVault.initialize, (deployer, factoryAddress, PAIR_FACTORY, VOTER, WETH))
+            );
 
             DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
             UpgradeableBeacon beacon = new UpgradeableBeacon(address(tokenImpl), deployer);
