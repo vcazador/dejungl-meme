@@ -70,14 +70,14 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
         address initialOwner,
         address factory,
         address pairFactory,
-        address traderRewards,
+        address traderRewards_,
         address voter,
         address weth,
         address token
     ) public initializer {
         if (
             initialOwner == address(0) || factory == address(0) || pairFactory == address(0)
-                || traderRewards == address(0) || weth == address(0) || token == address(0)
+                || traderRewards_ == address(0) || weth == address(0) || token == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -88,7 +88,7 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
         RewardVaultStorage storage $ = _getRewardVaultStorageLocation();
         $.factory = factory;
         $.pairFactory = pairFactory;
-        $.traderRewards = traderRewards;
+        $.traderRewards = traderRewards_;
         $.voter = voter;
         $.WETH = weth;
         $.rewardToken = token;
@@ -124,13 +124,13 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
 
         uint256 totalRewards = _tradingReward + _emissionsReward;
         address rewardToken = $.rewardToken;
-        address traderRewards = $.traderRewards;
+        address traderRewards_ = $.traderRewards;
 
         IERC20(rewardToken).safeTransferFrom(_msgSender(), address(this), totalRewards);
-        IERC20(rewardToken).forceApprove(traderRewards, _tradingReward);
+        IERC20(rewardToken).forceApprove(traderRewards_, _tradingReward);
 
         if (_tradingReward != 0) {
-            ITraderRewards(traderRewards).depositReward(_tradingReward);
+            ITraderRewards(traderRewards_).depositReward(_tradingReward);
         }
 
         uint256 totalEmissionsReward = _updateEmissionReward($, _emissionsReward);

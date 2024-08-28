@@ -51,7 +51,7 @@ contract EscrowVault is UUPSUpgradeable, OwnableUpgradeable {
      * @param token address of the token
      * @param amount bribe amount collected from escrow.
      */
-    event BibeAdded(address indexed token, uint256 amount);
+    event BribeAdded(address indexed token, uint256 amount);
 
     /**
      * @dev Emitted when a manager collect tokens.
@@ -120,7 +120,7 @@ contract EscrowVault is UUPSUpgradeable, OwnableUpgradeable {
         rewardinfo.totalAmount = amount;
         rewardinfo.lastCollected = getDistributionTime();
 
-        emit BibeAdded(token, amount);
+        emit BribeAdded(token, amount);
     }
 
     /**

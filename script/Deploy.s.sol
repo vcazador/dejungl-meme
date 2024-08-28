@@ -79,6 +79,8 @@ contract DeployScript is Script {
             _saveDeploymentAddress("DeJunglMemeTokenBeacon", address(beacon));
             _saveDeploymentAddress("DeJunglMemeFactoryImplementation", address(factoryImpl));
             _saveDeploymentAddress("DeJunglMemeFactory", factoryAddress);
+            _saveDeploymentAddress("EscrowVaultImplementation", address(escrowImpl));
+            _saveDeploymentAddress("EscrowVault", address(escrowProxy));
         } else {
             {
                 bytes memory deployedCode = _getDeployedCode(factoryAddress);
@@ -103,6 +105,20 @@ contract DeployScript is Script {
                     DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(beaconAddress);
                     UUPSUpgradeable(factoryAddress).upgradeToAndCall(address(factoryImpl), "");
                     _saveDeploymentAddress("DeJunglMemeFactoryImplementation", address(factoryImpl));
+                }
+            }
+            {
+                address escrowVaultAddress = _loadDeploymentAddress("EscrowVault");
+                address escrowVaultImplementationAddress = _loadDeploymentAddress("EscrowVaultImplementation");
+
+                bytes memory deployedCode = _getDeployedCode(escrowVaultImplementationAddress);
+                bytes memory deployableCode = vm.getDeployedCode("EscrowVault");
+
+                if (keccak256(deployedCode) != keccak256(deployableCode)) {
+                    // EscrowVault implementation has changed
+                    EscrowVault escrowVaultImpl = new EscrowVault();
+                    UUPSUpgradeable(escrowVaultAddress).upgradeToAndCall(escrowVaultImplementationAddress, "");
+                    _saveDeploymentAddress("EscrowVaultImplementation", address(escrowVaultImpl));
                 }
             }
         }
