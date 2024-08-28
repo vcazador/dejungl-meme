@@ -140,7 +140,7 @@ contract EscrowVault is UUPSUpgradeable, OwnableUpgradeable {
         $.rewards[token].lastCollected = getDistributionTime();
 
         (address pair, address bribe) = _getPairAndBribe($, token);
-        IERC20(token).approve(bribe, rewardinfo.rewardsPerWeek);
+        IERC20(token).forceApprove(bribe, rewardinfo.rewardsPerWeek);
         IBribe(bribe).notifyRewardAmount(token, rewardinfo.rewardsPerWeek);
 
         emit BribeCollected(token, pair, bribe, rewardinfo.rewardsPerWeek);

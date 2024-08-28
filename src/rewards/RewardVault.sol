@@ -8,6 +8,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {IGauge} from "src/interfaces/IGauge.sol";
 import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
 import {IPairFactory} from "src/interfaces/IPairFactory.sol";
+import {IPair} from "src/interfaces/IPair.sol";
 import {ITraderRewards} from "src/interfaces/ITraderRewards.sol";
 import {IVoter} from "src/interfaces/IVoter.sol";
 
@@ -167,7 +168,7 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
 
         {
             address factory = $.factory;
-            uint256 distributionLen = IMemeFactory(factory).tokensLength() - $.emittedTokensLength;
+            uint256 distributionLen = IMemeFactory(factory).dexPairsLength() - $.emittedTokensLength;
 
             if (distributionLen > 0) {
                 uint256 amount = rewardAmount / distributionLen;
@@ -177,10 +178,11 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
                     unchecked {
                         distributionLen--;
                     }
-                    address token = IMemeFactory(factory).tokens(distributionLen);
-                    (address pair, address gauge) = _getPairAndGauge($, token);
+                    address pair = IMemeFactory(factory).dexPairs(distributionLen);
+                    address token = IPair(pair).token1();
+                    address gauge = IVoter($.voter).gauges(pair);
 
-                    IERC20(rewardToken).approve(gauge, amount);
+                    IERC20(rewardToken).forceApprove(gauge, amount);
                     IGauge(gauge).notifyRewardAmount(rewardToken, amount);
                     emittedLen++;
 
@@ -211,16 +213,6 @@ contract RewardVault is UUPSUpgradeable, OwnableUpgradeable {
 
     function traderRewards() external view returns (address) {
         return _getRewardVaultStorageLocation().traderRewards;
-    }
-
-    function _getPairAndGauge(RewardVaultStorage storage $, address token)
-        internal
-        view
-        returns (address pair, address gauge)
-    {
-        pair = IPairFactory($.pairFactory).getPair(token, $.WETH, false);
-        IVoter voter = IVoter($.voter);
-        gauge = voter.gauges(pair);
     }
 
     function _onlyAllowed() internal view {
