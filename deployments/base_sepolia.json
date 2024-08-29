@@ -1,11 +1,11 @@
 {
   "DeJunglMemeFactory": "0xf817582B872f7FBc0667660B6Ca2a949d28e80CB",
-  "DeJunglMemeFactoryImplementation": "0x9C3c6F646Cf0a61187Fa6Ce58b865770F3822eCc",
+  "DeJunglMemeFactoryImplementation": "0x36b092978484296096117a2853a3D516755519DE",
   "DeJunglMemeTokenBeacon": "0xa4343a5da4AC60ADECE6e4DeCfd528c9fEEB1848",
-  "DeJunglMemeTokenImplementation": "0x8dC03A2bE828d8F3756cdf3CB791d2a64aC21BF4",
+  "DeJunglMemeTokenImplementation": "0x0D17e96b9D4287143acDbc310AbEc8ac2CA7c0f0",
   "EscrowVault": "0x2b203eb63253cDA19B3E56996C9632C54B887c72",
-  "EscrowVaultImplementation": "0xF53f5d10b90026DB61c0D91de87EE3772897112B",
+  "EscrowVaultImplementation": "0x9d1A82c546338EA057Be138eD0E6778a84AbfEcF",
   "RewardVault": "0x6e2f085de29c40cF9340eB4119202aF2179D4068",
-  "RewardVaultImplementation": "0xb567803DE07Ee736F54C61Fb7Ae1fBe3549EAbe2",
-  "TraderRewards": "0x21326a95cEDA1c3327a41C5FF6aabE72294ae3Ba"
+  "RewardVaultImplementation": "0x999d3bf32EAa7422405011d756AFfe827758bEe3",
+  "TraderRewards": "0x3cDd677f2da38FF6872957BC3d0A839a1FDaAC62"
 }

@@ -41,11 +41,11 @@ contract DeployScript is Script {
         address traderRewards = _deployTraderRewardsDistributor();
         address rewardVault = _deployRewardVault();
 
-        if (TraderRewards(traderRewards).depositor() == rewardVault) {
+        if (TraderRewards(traderRewards).depositor() != rewardVault) {
             TraderRewards(traderRewards).setDepositor(rewardVault);
         }
 
-        if (RewardVault(rewardVault).traderRewards() == traderRewards) {
+        if (RewardVault(rewardVault).traderRewards() != traderRewards) {
             RewardVault(rewardVault).setTraderRewards(traderRewards);
         }
     }
@@ -55,6 +55,8 @@ contract DeployScript is Script {
 
         if (factoryAddress == address(0) || !_isDeployed(factoryAddress)) {
             factoryAddress = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 5);
+
+            console.log("Deploying DeJunglMemeToken, DeJungleMemeFactory and EscrowVault");
 
             EscrowVault escrowImpl = new EscrowVault();
             ERC1967Proxy escrowProxy = new ERC1967Proxy(
@@ -84,10 +86,17 @@ contract DeployScript is Script {
         } else {
             {
                 bytes memory deployedCode = _getDeployedCode(factoryAddress);
-                bytes memory deployableCode = vm.getDeployedCode("DeJunglMemeToken");
+
+                vm.stopBroadcast();
+
+                DeJunglMemeToken tmpTokenImpl = new DeJunglMemeToken(factoryAddress);
+                bytes memory deployableCode = _getDeployedCode(address(tmpTokenImpl));
+
+                vm.startBroadcast(privateKey);
 
                 if (keccak256(deployedCode) != keccak256(deployableCode)) {
                     // DeJunglMemeToken implementation has changed
+                    console.log("Redeploying DeJunglMemeToken implementation");
                     address beaconAddress = _loadDeploymentAddress("DeJunglMemeTokenBeacon");
                     DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
                     UpgradeableBeacon(beaconAddress).upgradeTo(address(tokenImpl));
@@ -96,12 +105,20 @@ contract DeployScript is Script {
             }
             {
                 address factoryImplementationAddress = _loadDeploymentAddress("DeJunglMemeFactoryImplementation");
+                address beaconAddress = _loadDeploymentAddress("DeJunglMemeTokenBeacon");
+
                 bytes memory deployedCode = _getDeployedCode(factoryImplementationAddress);
-                bytes memory deployableCode = vm.getDeployedCode("DeJunglMemeFactory");
+
+                vm.stopBroadcast();
+
+                DeJunglMemeFactory tmpFactoryImpl = new DeJunglMemeFactory(beaconAddress);
+                bytes memory deployableCode = _getDeployedCode(address(tmpFactoryImpl));
+
+                vm.startBroadcast(privateKey);
 
                 if (keccak256(deployedCode) != keccak256(deployableCode)) {
                     // DeJunglMemeFactory implementation has changed
-                    address beaconAddress = _loadDeploymentAddress("DeJunglMemeTokenBeacon");
+                    console.log("Redeploying DeJunglMemeFactory implementation");
                     DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(beaconAddress);
                     UUPSUpgradeable(factoryAddress).upgradeToAndCall(address(factoryImpl), "");
                     _saveDeploymentAddress("DeJunglMemeFactoryImplementation", address(factoryImpl));
@@ -112,10 +129,17 @@ contract DeployScript is Script {
                 address escrowVaultImplementationAddress = _loadDeploymentAddress("EscrowVaultImplementation");
 
                 bytes memory deployedCode = _getDeployedCode(escrowVaultImplementationAddress);
-                bytes memory deployableCode = vm.getDeployedCode("EscrowVault");
+
+                vm.stopBroadcast();
+
+                EscrowVault tmpEscrowVaultImpl = new EscrowVault();
+                bytes memory deployableCode = _getDeployedCode(address(tmpEscrowVaultImpl));
+
+                vm.startBroadcast(privateKey);
 
                 if (keccak256(deployedCode) != keccak256(deployableCode)) {
                     // EscrowVault implementation has changed
+                    console.log("Redeploying EscrowVault implementation");
                     EscrowVault escrowVaultImpl = new EscrowVault();
                     UUPSUpgradeable(escrowVaultAddress).upgradeToAndCall(escrowVaultImplementationAddress, "");
                     _saveDeploymentAddress("EscrowVaultImplementation", address(escrowVaultImpl));
@@ -130,6 +154,7 @@ contract DeployScript is Script {
         rewardsAddress = _loadDeploymentAddress("TraderRewards");
 
         if (rewardsAddress == address(0) || !_isDeployed(rewardsAddress)) {
+            console.log("Deploying TraderRewards");
             TraderRewards rewards = new TraderRewards(factoryAddress, JUNGL, deployer);
             rewardsAddress = address(rewards);
             _saveDeploymentAddress("TraderRewards", rewardsAddress);
@@ -145,6 +170,7 @@ contract DeployScript is Script {
 
             if (keccak256(deployedCode) != keccak256(deployableCode)) {
                 // TraderRewards implementation has changed
+                console.log("Redeploying TraderRewards");
                 TraderRewards rewards = new TraderRewards(factoryAddress, JUNGL, deployer);
                 rewardsAddress = address(rewards);
                 _saveDeploymentAddress("TraderRewards", rewardsAddress);
@@ -159,6 +185,7 @@ contract DeployScript is Script {
         address traderRewardsAddress = _loadDeploymentAddress("TraderRewards");
 
         if (vaultAddress == address(0) || !_isDeployed(vaultAddress)) {
+            console.log("Deploying RewardVault");
             RewardVault vaultImpl = new RewardVault();
             ERC1967Proxy vaultProxy = new ERC1967Proxy(
                 address(vaultImpl),
@@ -175,15 +202,26 @@ contract DeployScript is Script {
         } else {
             {
                 bytes memory deployedCode = _getDeployedCode(vaultAddress);
-                bytes memory deployableCode = vm.getDeployedCode("RewardVault");
+
+                vm.stopBroadcast();
+
+                RewardVault tmpVaultImpl = new RewardVault();
+                bytes memory deployableCode = _getDeployedCode(address(tmpVaultImpl));
+
+                vm.startBroadcast(privateKey);
 
                 if (keccak256(deployedCode) != keccak256(deployableCode)) {
                     // RewardVault implementation has changed
+                    console.log("Redeploying RewardVault implementation");
                     RewardVault vaultImpl = new RewardVault();
                     UUPSUpgradeable(vaultAddress).upgradeToAndCall(address(vaultImpl), "");
                     _saveDeploymentAddress("RewardVaultImplementation", address(vaultImpl));
                 }
             }
+        }
+
+        if (RewardVault(vaultAddress).traderRewards() != traderRewardsAddress) {
+            RewardVault(vaultAddress).setTraderRewards(traderRewardsAddress);
         }
     }
 

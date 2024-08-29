@@ -118,12 +118,13 @@ contract TraderRewards is Ownable, ITraderRewards {
         if (from >= today) {
             return (0, 0);
         }
-        (uint256 totalBuys, uint256 totalSells) = IMemeFactory(factory).getAccountSpending(account, from, today - 1);
+        uint48 to = today - uint48(DISTRIBUTION_PERIOD) - 1;
+        (uint256 totalBuys, uint256 totalSells) = IMemeFactory(factory).getAccountSpending(account, from, to);
         volume = totalBuys + totalSells;
         if (volume == 0) {
             return (0, 0);
         }
-        (totalBuys, totalSells) = IMemeFactory(factory).getTotalSpending(from, today - 1);
+        (totalBuys, totalSells) = IMemeFactory(factory).getTotalSpending(from, to);
         uint256 totalVolume = totalBuys + totalSells;
         amount = volume * rewardPerPeriod[today] / totalVolume;
     }
