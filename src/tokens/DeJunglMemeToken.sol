@@ -325,12 +325,12 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         uint256 escrowAmount = $.escrowAmount;
         uint256 poolSupplyAmount = getPoolSupply();
 
-        _transfer(address(this), factory.escrow(), escrowAmount);
         _approve(address(this), address(factory), poolSupplyAmount);
 
         try factory.createPair{value: ethAmount}(poolSupplyAmount, ethAmount) returns (
             uint256 amountToken, uint256 amountETH, uint256 amountZUSD, uint256 liquidity
         ) {
+            _transfer(address(this), factory.escrow(), escrowAmount);
             emit LiquidityAddedAndBurned(amountToken, amountETH, amountZUSD, liquidity);
         } catch {}
 
