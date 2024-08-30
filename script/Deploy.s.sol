@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 import {Script, console} from "forge-std/Script.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {UpgradeableBeacon} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
@@ -15,6 +16,8 @@ import {TraderRewards} from "src/rewards/TraderRewards.sol";
 
 // forge script ./script/Deploy.s.sol --rpc-url $RPC_URL --slow --broadcast --verify
 contract DeployScript is Script {
+    bytes32 constant SALT = keccak256("dejungl-meme-dev-v1");
+
     address constant ROUTER = 0xbb4Bd284eE0C5075D97403e2e4b377b39E5BD324;
     address constant VOTER = 0xf50aA5B9f6173B85B641b420B6401C381bA330AF;
     address constant zUSD = 0xcCf17c47B8C21C9cFE1C31339F5EABA90dF62DDc;
@@ -36,8 +39,7 @@ contract DeployScript is Script {
     function run() public {
         vm.startBroadcast(privateKey);
 
-        _deployMemeFactory();
-
+        address factory = _deployMemeFactory();
         address traderRewards = _deployTraderRewardsDistributor();
         address rewardVault = _deployRewardVault();
 
@@ -45,183 +47,185 @@ contract DeployScript is Script {
             TraderRewards(traderRewards).setDepositor(rewardVault);
         }
 
-        if (RewardVault(rewardVault).traderRewards() != traderRewards) {
-            RewardVault(rewardVault).setTraderRewards(traderRewards);
+        if (keccak256(abi.encodePacked(getChain(block.chainid).chainAlias)) == keccak256("base_sepolia")) {
+            if (DeJunglMemeFactory(factory).initialVirtualReserveETH() != 0.002 ether) {
+                DeJunglMemeFactory(factory).setInitialVirtualReserveETH(0.002 ether);
+            }
         }
     }
 
     function _deployMemeFactory() internal returns (address factoryAddress) {
-        factoryAddress = _loadDeploymentAddress("DeJunglMemeFactory");
+        bytes32 initCodeHash = hashInitCode(type(DeJunglMemeFactory).creationCode);
+        factoryAddress = vm.computeCreate2Address(SALT, initCodeHash);
 
-        if (factoryAddress == address(0) || !_isDeployed(factoryAddress)) {
-            factoryAddress = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 5);
+        address tokenImplementation = _deployTokenImplementation(factoryAddress);
+        address beacon = _deployBeacon(tokenImplementation);
+        address escrowVault = _deployEscrowVault(factoryAddress);
 
-            console.log("Deploying DeJunglMemeToken, DeJungleMemeFactory and EscrowVault");
+        DeJunglMemeFactory factory;
 
-            EscrowVault escrowImpl = new EscrowVault();
-            ERC1967Proxy escrowProxy = new ERC1967Proxy(
-                address(escrowImpl),
-                abi.encodeCall(EscrowVault.initialize, (deployer, factoryAddress, PAIR_FACTORY, VOTER, WETH))
-            );
-
-            DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
-            UpgradeableBeacon beacon = new UpgradeableBeacon(address(tokenImpl), deployer);
-            DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(address(beacon));
-            ERC1967Proxy proxy = new ERC1967Proxy(
-                address(factoryImpl),
-                abi.encodeCall(
-                    DeJunglMemeFactory.initialize,
-                    (deployer, ROUTER, VOTER, address(escrowProxy), FEE_RECIPIENT, zUSD, initVirtualReserveETH)
-                )
-            );
-
-            assert(address(proxy) == factoryAddress);
-
-            _saveDeploymentAddress("DeJunglMemeTokenImplementation", address(tokenImpl));
-            _saveDeploymentAddress("DeJunglMemeTokenBeacon", address(beacon));
-            _saveDeploymentAddress("DeJunglMemeFactoryImplementation", address(factoryImpl));
-            _saveDeploymentAddress("DeJunglMemeFactory", factoryAddress);
-            _saveDeploymentAddress("EscrowVaultImplementation", address(escrowImpl));
-            _saveDeploymentAddress("EscrowVault", address(escrowProxy));
+        if (!_isDeployed(factoryAddress)) {
+            factory = new DeJunglMemeFactory{salt: SALT}();
+            assert(address(factory) == factoryAddress);
         } else {
-            {
-                bytes memory deployedCode = _getDeployedCode(factoryAddress);
-
-                vm.stopBroadcast();
-
-                DeJunglMemeToken tmpTokenImpl = new DeJunglMemeToken(factoryAddress);
-                bytes memory deployableCode = _getDeployedCode(address(tmpTokenImpl));
-
-                vm.startBroadcast(privateKey);
-
-                if (keccak256(deployedCode) != keccak256(deployableCode)) {
-                    // DeJunglMemeToken implementation has changed
-                    console.log("Redeploying DeJunglMemeToken implementation");
-                    address beaconAddress = _loadDeploymentAddress("DeJunglMemeTokenBeacon");
-                    DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
-                    UpgradeableBeacon(beaconAddress).upgradeTo(address(tokenImpl));
-                    _saveDeploymentAddress("DeJunglMemeTokenImplementation", address(tokenImpl));
-                }
-            }
-            {
-                address factoryImplementationAddress = _loadDeploymentAddress("DeJunglMemeFactoryImplementation");
-                address beaconAddress = _loadDeploymentAddress("DeJunglMemeTokenBeacon");
-
-                bytes memory deployedCode = _getDeployedCode(factoryImplementationAddress);
-
-                vm.stopBroadcast();
-
-                DeJunglMemeFactory tmpFactoryImpl = new DeJunglMemeFactory(beaconAddress);
-                bytes memory deployableCode = _getDeployedCode(address(tmpFactoryImpl));
-
-                vm.startBroadcast(privateKey);
-
-                if (keccak256(deployedCode) != keccak256(deployableCode)) {
-                    // DeJunglMemeFactory implementation has changed
-                    console.log("Redeploying DeJunglMemeFactory implementation");
-                    DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(beaconAddress);
-                    UUPSUpgradeable(factoryAddress).upgradeToAndCall(address(factoryImpl), "");
-                    _saveDeploymentAddress("DeJunglMemeFactoryImplementation", address(factoryImpl));
-                }
-            }
-            {
-                address escrowVaultAddress = _loadDeploymentAddress("EscrowVault");
-                address escrowVaultImplementationAddress = _loadDeploymentAddress("EscrowVaultImplementation");
-
-                bytes memory deployedCode = _getDeployedCode(escrowVaultImplementationAddress);
-
-                vm.stopBroadcast();
-
-                EscrowVault tmpEscrowVaultImpl = new EscrowVault();
-                bytes memory deployableCode = _getDeployedCode(address(tmpEscrowVaultImpl));
-
-                vm.startBroadcast(privateKey);
-
-                if (keccak256(deployedCode) != keccak256(deployableCode)) {
-                    // EscrowVault implementation has changed
-                    console.log("Redeploying EscrowVault implementation");
-                    EscrowVault escrowVaultImpl = new EscrowVault();
-                    UUPSUpgradeable(escrowVaultAddress).upgradeToAndCall(escrowVaultImplementationAddress, "");
-                    _saveDeploymentAddress("EscrowVaultImplementation", address(escrowVaultImpl));
-                }
-            }
+            factory = DeJunglMemeFactory(factoryAddress);
         }
+
+        _saveDeploymentAddress("DeJunglMemeFactoryImplementation", factoryAddress);
+
+        factoryAddress = _deployProxy(
+            "DeJunglMemeFactory",
+            factoryAddress,
+            abi.encodeCall(
+                factory.initialize,
+                (deployer, beacon, ROUTER, VOTER, escrowVault, FEE_RECIPIENT, zUSD, initVirtualReserveETH)
+            )
+        );
+        factory = DeJunglMemeFactory(factoryAddress);
+
+        if (factory.escrow() != escrowVault) {
+            factory.setEscrow(escrowVault);
+        }
+    }
+
+    function _deployBeacon(address tokenImplementation) internal returns (address beaconAddress) {
+        bytes32 initCodeHash =
+            hashInitCode(type(UpgradeableBeacon).creationCode, abi.encode(tokenImplementation, deployer));
+        beaconAddress = vm.computeCreate2Address(SALT, initCodeHash);
+
+        UpgradeableBeacon beacon;
+
+        if (!_isDeployed(beaconAddress)) {
+            beacon = new UpgradeableBeacon{salt: SALT}(tokenImplementation, deployer);
+            assert(address(beacon) == beaconAddress);
+        } else {
+            beacon = UpgradeableBeacon(beaconAddress);
+        }
+
+        if (beacon.implementation() != tokenImplementation) {
+            beacon.upgradeTo(tokenImplementation);
+        }
+
+        _saveDeploymentAddress("DeJunglMemeTokenBeacon", beaconAddress);
+    }
+
+    function _deployTokenImplementation(address factory) internal returns (address tokenImplementationAddress) {
+        bytes32 initCodeHash = hashInitCode(type(DeJunglMemeToken).creationCode, abi.encode(factory));
+        tokenImplementationAddress = vm.computeCreate2Address(SALT, initCodeHash);
+
+        DeJunglMemeToken tokenImpl;
+
+        if (!_isDeployed(tokenImplementationAddress)) {
+            tokenImpl = new DeJunglMemeToken{salt: SALT}(factory);
+            assert(address(tokenImpl) == tokenImplementationAddress);
+        } else {
+            tokenImpl = DeJunglMemeToken(payable(tokenImplementationAddress));
+        }
+
+        _saveDeploymentAddress("DeJunglMemeTokenImplementation", tokenImplementationAddress);
+    }
+
+    function _deployEscrowVault(address factory) internal returns (address escrowAddress) {
+        bytes32 initCodeHash = hashInitCode(type(EscrowVault).creationCode);
+        escrowAddress = vm.computeCreate2Address(SALT, initCodeHash);
+
+        EscrowVault escrowVault;
+
+        if (!_isDeployed(escrowAddress)) {
+            escrowVault = new EscrowVault{salt: SALT}();
+            assert(address(escrowVault) == escrowAddress);
+        } else {
+            escrowVault = EscrowVault(escrowAddress);
+        }
+
+        _saveDeploymentAddress("EscrowVaultImplementation", escrowAddress);
+
+        escrowAddress = _deployProxy(
+            "EscrowVault",
+            escrowAddress,
+            abi.encodeCall(EscrowVault.initialize, (deployer, factory, PAIR_FACTORY, VOTER, WETH))
+        );
+        escrowVault = EscrowVault(escrowAddress);
     }
 
     function _deployTraderRewardsDistributor() internal returns (address rewardsAddress) {
-        address factoryAddress = _loadDeploymentAddress("DeJunglMemeFactory");
+        address factory = _loadDeploymentAddress("DeJunglMemeFactory");
 
-        rewardsAddress = _loadDeploymentAddress("TraderRewards");
+        bytes32 initCodeHash = hashInitCode(type(TraderRewards).creationCode);
+        rewardsAddress = vm.computeCreate2Address(SALT, initCodeHash);
 
-        if (rewardsAddress == address(0) || !_isDeployed(rewardsAddress)) {
-            console.log("Deploying TraderRewards");
-            TraderRewards rewards = new TraderRewards(factoryAddress, JUNGL, deployer);
-            rewardsAddress = address(rewards);
-            _saveDeploymentAddress("TraderRewards", rewardsAddress);
+        TraderRewards traderRewards;
+
+        if (!_isDeployed(rewardsAddress)) {
+            traderRewards = new TraderRewards{salt: SALT}();
+            assert(address(traderRewards) == rewardsAddress);
         } else {
-            vm.stopBroadcast();
-
-            TraderRewards newRewards = new TraderRewards(factoryAddress, JUNGL, deployer);
-            bytes memory deployableCode = _getDeployedCode(address(newRewards));
-
-            vm.startBroadcast(privateKey);
-
-            bytes memory deployedCode = _getDeployedCode(rewardsAddress);
-
-            if (keccak256(deployedCode) != keccak256(deployableCode)) {
-                // TraderRewards implementation has changed
-                console.log("Redeploying TraderRewards");
-                TraderRewards rewards = new TraderRewards(factoryAddress, JUNGL, deployer);
-                rewardsAddress = address(rewards);
-                _saveDeploymentAddress("TraderRewards", rewardsAddress);
-            }
+            traderRewards = TraderRewards(rewardsAddress);
         }
+
+        _saveDeploymentAddress("TraderRewardsImplementation", rewardsAddress);
+
+        rewardsAddress = _deployProxy(
+            "TraderRewards", rewardsAddress, abi.encodeCall(TraderRewards.initialize, (deployer, factory, JUNGL))
+        );
+        traderRewards = TraderRewards(rewardsAddress);
     }
 
     function _deployRewardVault() internal returns (address vaultAddress) {
-        vaultAddress = _loadDeploymentAddress("RewardVault");
+        address factory = _loadDeploymentAddress("DeJunglMemeFactory");
+        address traderRewards = _loadDeploymentAddress("TraderRewards");
 
-        address factoryAddress = _loadDeploymentAddress("DeJunglMemeFactory");
-        address traderRewardsAddress = _loadDeploymentAddress("TraderRewards");
+        bytes32 initCodeHash = hashInitCode(type(RewardVault).creationCode);
+        vaultAddress = vm.computeCreate2Address(SALT, initCodeHash);
 
-        if (vaultAddress == address(0) || !_isDeployed(vaultAddress)) {
-            console.log("Deploying RewardVault");
-            RewardVault vaultImpl = new RewardVault();
-            ERC1967Proxy vaultProxy = new ERC1967Proxy(
-                address(vaultImpl),
-                abi.encodeCall(
-                    RewardVault.initialize,
-                    (deployer, factoryAddress, PAIR_FACTORY, traderRewardsAddress, VOTER, WETH, JUNGL)
-                )
-            );
+        RewardVault rewardVault;
 
-            vaultAddress = address(vaultProxy);
-
-            _saveDeploymentAddress("RewardVaultImplementation", address(vaultImpl));
-            _saveDeploymentAddress("RewardVault", address(vaultProxy));
+        if (!_isDeployed(vaultAddress)) {
+            rewardVault = new RewardVault{salt: SALT}();
+            assert(address(rewardVault) == vaultAddress);
         } else {
-            {
-                bytes memory deployedCode = _getDeployedCode(vaultAddress);
-
-                vm.stopBroadcast();
-
-                RewardVault tmpVaultImpl = new RewardVault();
-                bytes memory deployableCode = _getDeployedCode(address(tmpVaultImpl));
-
-                vm.startBroadcast(privateKey);
-
-                if (keccak256(deployedCode) != keccak256(deployableCode)) {
-                    // RewardVault implementation has changed
-                    console.log("Redeploying RewardVault implementation");
-                    RewardVault vaultImpl = new RewardVault();
-                    UUPSUpgradeable(vaultAddress).upgradeToAndCall(address(vaultImpl), "");
-                    _saveDeploymentAddress("RewardVaultImplementation", address(vaultImpl));
-                }
-            }
+            rewardVault = RewardVault(vaultAddress);
         }
 
-        if (RewardVault(vaultAddress).traderRewards() != traderRewardsAddress) {
-            RewardVault(vaultAddress).setTraderRewards(traderRewardsAddress);
+        _saveDeploymentAddress("RewardVaultImplementation", vaultAddress);
+
+        vaultAddress = _deployProxy(
+            "RewardVault",
+            vaultAddress,
+            abi.encodeCall(RewardVault.initialize, (deployer, factory, PAIR_FACTORY, traderRewards, VOTER, WETH, JUNGL))
+        );
+        rewardVault = RewardVault(vaultAddress);
+
+        if (rewardVault.traderRewards() != traderRewards) {
+            rewardVault.setTraderRewards(traderRewards);
+        }
+    }
+
+    function _deployProxy(string memory name, address implementation, bytes memory data)
+        internal
+        returns (address proxyAddress)
+    {
+        proxyAddress = _loadDeploymentAddress(name);
+
+        if (_isDeployed(proxyAddress)) {
+            address impl = address(uint160(uint256(vm.load(proxyAddress, ERC1967Utils.IMPLEMENTATION_SLOT))));
+            if (impl != implementation) {
+                UUPSUpgradeable(proxyAddress).upgradeToAndCall(implementation, "");
+            }
+        } else {
+            bytes32 initCodeHash = hashInitCode(type(ERC1967Proxy).creationCode, abi.encode(implementation, data));
+            proxyAddress = vm.computeCreate2Address(SALT, initCodeHash);
+
+            ERC1967Proxy proxy;
+
+            if (!_isDeployed(proxyAddress)) {
+                proxy = new ERC1967Proxy{salt: SALT}(implementation, data);
+                assert(address(proxy) == proxyAddress);
+            } else {
+                proxy = ERC1967Proxy(payable(proxyAddress));
+            }
+
+            _saveDeploymentAddress(name, proxyAddress);
         }
     }
 

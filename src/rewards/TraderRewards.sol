@@ -2,7 +2,8 @@
 pragma solidity =0.8.25;
 
 import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {IMemeFactory} from "src/interfaces/IMemeFactory.sol";
 import {ITraderRewards} from "src/interfaces/ITraderRewards.sol";
@@ -15,29 +16,39 @@ import {EPOCH_DURATION, DISTRIBUTION_PERIOD} from "src/utils/Epoch.sol";
  *      Rewards are calculated daily and distributed based on the volume of trading activity.
  * @notice This contract allows users to claim rewards for trading activities tracked via the connected factory.
  */
-contract TraderRewards is Ownable, ITraderRewards {
+contract TraderRewards is OwnableUpgradeable, UUPSUpgradeable, ITraderRewards {
     using SafeERC20 for IERC20;
 
-    address public immutable factory;
-    address public immutable rewardToken;
+    // keccak256(abi.encode(uint256(keccak256("dejungle.storage.ITraderRewards")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant TraderRewardsStorageLocation =
+        0x79bc9948bc7d2be9511b1d223c41a352c94ee9578db38d228b5cca2cb9993000;
 
-    address public depositor;
+    function _getTraderRewardsStorage() private pure returns (TraderRewardsStorage storage $) {
+        assembly {
+            $.slot := TraderRewardsStorageLocation
+        }
+    }
 
-    mapping(address => uint256) public totalClaimed;
-    mapping(uint256 => uint256) public rewardPerPeriod;
-    mapping(address => uint48) public nextUserClaim;
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
     /**
      * @notice Initializes the TraderRewards contract with necessary addresses and owner.
-     * @dev Sets the immutable addresses for the factory and reward token, and sets the initial owner of the contract.
+     * @dev Sets the addresses for the factory and reward token, and sets the initial owner of the contract.
+     * @param initialOwner Address that will own the contract initially, passed to the Ownable constructor.
      * @param _factory Address of the MemeFactory contract used to track trading volumes.
      * @param _rewardToken ERC20 token address used as the reward currency.
-     * @param initialOwner Address that will own the contract initially, passed to the Ownable constructor.
      */
-    constructor(address _factory, address _rewardToken, address initialOwner) Ownable(initialOwner) {
-        factory = _factory;
-        rewardToken = _rewardToken;
-        depositor = initialOwner;
+    function initialize(address initialOwner, address _factory, address _rewardToken) external initializer {
+        __Ownable_init(initialOwner);
+        __UUPSUpgradeable_init();
+
+        TraderRewardsStorage storage $ = _getTraderRewardsStorage();
+        $.factory = _factory;
+        $.rewardToken = _rewardToken;
+        $.depositor = initialOwner;
     }
 
     /**
@@ -46,7 +57,8 @@ contract TraderRewards is Ownable, ITraderRewards {
      * @param _depositor The address to set as the depositor.
      */
     function setDepositor(address _depositor) external onlyOwner {
-        depositor = _depositor;
+        TraderRewardsStorage storage $ = _getTraderRewardsStorage();
+        $.depositor = _depositor;
     }
 
     /**
@@ -62,6 +74,30 @@ contract TraderRewards is Ownable, ITraderRewards {
     }
 
     /**
+     * @notice Allows a user to claim their accrued trading rewards.
+     * @dev Claims all available rewards for the sender, updates the claim timestamp, and transfers the rewards.
+     * @return amount The amount of rewards claimed by the caller.
+     */
+    function claimReward() external returns (uint256 amount) {
+        TraderRewardsStorage storage $ = _getTraderRewardsStorage();
+        address user = msg.sender;
+
+        (amount,) = claimableReward(user);
+
+        $.nextUserClaim[user] = _currentPeriod();
+
+        uint256 _totalClaimed = $.totalClaimed[user];
+        uint256 newTotalClaimed = _totalClaimed + amount;
+        $.totalClaimed[user] = newTotalClaimed;
+
+        if (amount != 0) {
+            IERC20($.rewardToken).safeTransfer(user, amount);
+        }
+
+        emit RewardClaimed(user, amount, newTotalClaimed);
+    }
+
+    /**
      * @notice Deposits a specified amount of rewards to be distributed over a specified period.
      * @dev Transfers the specified reward amount from the caller and distributes it evenly over the specified period.
      * @param amount The total amount of rewards to be distributed.
@@ -71,11 +107,13 @@ contract TraderRewards is Ownable, ITraderRewards {
      * @custom:error Unauthorized Thrown if the caller is not the depositor or the owner.
      */
     function depositReward(uint256 amount, uint256 from, uint256 to) public {
-        if (msg.sender != depositor && msg.sender != owner()) {
+        TraderRewardsStorage storage $ = _getTraderRewardsStorage();
+
+        if (msg.sender != $.depositor && msg.sender != owner()) {
             revert Unauthorized();
         }
 
-        IERC20(rewardToken).safeTransferFrom(msg.sender, address(this), amount);
+        IERC20($.rewardToken).safeTransferFrom(msg.sender, address(this), amount);
 
         uint256 today = _currentPeriod();
         uint256 firstPeriod = _startOfPeriod(from);
@@ -90,7 +128,7 @@ contract TraderRewards is Ownable, ITraderRewards {
         uint256 period = firstPeriod;
 
         while (periods != 0) {
-            rewardPerPeriod[period] += amountPerPeriod;
+            $.rewardPerPeriod[period] += amountPerPeriod;
             unchecked {
                 periods--;
                 remainingAmount -= amountPerPeriod;
@@ -99,7 +137,7 @@ contract TraderRewards is Ownable, ITraderRewards {
         }
 
         if (remainingAmount != 0) {
-            rewardPerPeriod[firstPeriod] += remainingAmount;
+            $.rewardPerPeriod[firstPeriod] += remainingAmount;
         }
 
         emit RewardDeposited(msg.sender, amount, firstPeriod, period);
@@ -113,44 +151,80 @@ contract TraderRewards is Ownable, ITraderRewards {
      * @return volume The total trading volume of the account that contributes to the reward calculation.
      */
     function claimableReward(address account) public view returns (uint256 amount, uint256 volume) {
-        uint48 from = nextUserClaim[account];
+        TraderRewardsStorage storage $ = _getTraderRewardsStorage();
+        uint48 from = $.nextUserClaim[account];
         uint48 today = _currentPeriod();
         if (from >= today) {
             return (0, 0);
         }
         uint48 to = today - uint48(DISTRIBUTION_PERIOD) - 1;
-        (uint256 totalBuys, uint256 totalSells) = IMemeFactory(factory).getAccountSpending(account, from, to);
+        address factory_ = $.factory;
+        (uint256 totalBuys, uint256 totalSells) = IMemeFactory(factory_).getAccountSpending(account, from, to);
         volume = totalBuys + totalSells;
         if (volume == 0) {
             return (0, 0);
         }
-        (totalBuys, totalSells) = IMemeFactory(factory).getTotalSpending(from, to);
+        (totalBuys, totalSells) = IMemeFactory(factory_).getTotalSpending(from, to);
         uint256 totalVolume = totalBuys + totalSells;
-        amount = volume * rewardPerPeriod[today] / totalVolume;
+        amount = volume * $.rewardPerPeriod[today] / totalVolume;
     }
 
     /**
-     * @notice Allows a user to claim their accrued trading rewards.
-     * @dev Claims all available rewards for the sender, updates the claim timestamp, and transfers the rewards.
-     * @return amount The amount of rewards claimed by the caller.
+     * @notice Gets the address of the depositor account for the rewards.
+     * @return The address of the depositor account.
      */
-    function claimReward() external returns (uint256 amount) {
-        address user = msg.sender;
-
-        (amount,) = claimableReward(user);
-
-        nextUserClaim[user] = _currentPeriod();
-
-        uint256 _totalClaimed = totalClaimed[user];
-        uint256 newTotalClaimed = _totalClaimed + amount;
-        totalClaimed[user] = newTotalClaimed;
-
-        if (amount != 0) {
-            IERC20(rewardToken).safeTransfer(user, amount);
-        }
-
-        emit RewardClaimed(user, amount, newTotalClaimed);
+    function depositor() external view override returns (address) {
+        return _getTraderRewardsStorage().depositor;
     }
+
+    /**
+     * @notice Gets the address of the factory contract used to track trading volumes.
+     * @return The address of the factory contract.
+     */
+    function factory() external view override returns (address) {
+        return _getTraderRewardsStorage().factory;
+    }
+
+    /**
+     * @notice Gets the timestamp of the next claim period for a user.
+     * @param account The account to check the next claim period for.
+     * @return The timestamp of the next claim period for the account.
+     */
+    function nextUserClaim(address account) external view override returns (uint48) {
+        return _getTraderRewardsStorage().nextUserClaim[account];
+    }
+
+    /**
+     * @notice Gets the reward amount per period.
+     * @param period The period to get the reward amount for.
+     * @return The reward amount for the specified period.
+     */
+    function rewardPerPeriod(uint256 period) external view override returns (uint256) {
+        return _getTraderRewardsStorage().rewardPerPeriod[period];
+    }
+
+    /**
+     * @notice Gets the address of the reward token used for rewards.
+     * @return The address of the reward token.
+     */
+    function rewardToken() external view override returns (address) {
+        return _getTraderRewardsStorage().rewardToken;
+    }
+
+    /**
+     * @notice Gets the total claimed rewards for an account.
+     * @param account The account to get the total claimed rewards for.
+     * @return The total claimed rewards for the account.
+     */
+    function totalClaimed(address account) external view override returns (uint256) {
+        return _getTraderRewardsStorage().totalClaimed[account];
+    }
+
+    /**
+     * @notice Internal function to authorize contract upgrades.
+     * @dev Overrides the UUPSUpgradeable's _authorizeUpgrade to restrict upgrade authority to the contract owner.
+     */
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 
     /**
      * @notice Gets the current period.

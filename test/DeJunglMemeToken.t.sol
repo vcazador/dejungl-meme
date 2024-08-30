@@ -57,12 +57,12 @@ contract DeJunglMemeTokenTest is Test {
 
         DeJunglMemeToken tokenImpl = new DeJunglMemeToken(factoryAddress);
         UpgradeableBeacon beacon = new UpgradeableBeacon(address(tokenImpl), deployer);
-        DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory(address(beacon));
+        DeJunglMemeFactory factoryImpl = new DeJunglMemeFactory();
         ERC1967Proxy proxy = new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(
                 DeJunglMemeFactory.initialize,
-                (deployer, router, voter, address(escrow), feeRecipient, zUSD, initVirtualReserveETH)
+                (deployer, address(beacon), router, voter, address(escrow), feeRecipient, zUSD, initVirtualReserveETH)
             )
         );
 

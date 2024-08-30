@@ -7,6 +7,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 interface IMemeFactory {
     /// @custom:storage-location erc7201:dejungle.storage.IMemeFactory
     struct DeJunglMemeFactoryStorage {
+        address beacon;
         address router;
         address voter;
         address escrow;

@@ -44,19 +44,8 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         }
     }
 
-    address public immutable beacon;
-
-    /**
-     * @notice Constructs the DeJunglMemeFactory and sets the beacon address for creating new tokens.
-     * @dev The constructor initializes the beacon address which points to the implementation contract used by all
-     *      proxies created.
-     *      It disables initializers to prevent re-initialization post deployment.
-     * @param _beacon The address of the beacon contract which holds the address of the implementation logic for tokens.
-     * @custom:oz-upgrades-unsafe-allow constructor Allows constructor execution in upgradeable contracts which is
-     * generally discouraged in OpenZeppelin.
-     */
-    constructor(address _beacon) {
-        beacon = _beacon;
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
         _disableInitializers();
     }
 
@@ -66,6 +55,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
      *      operational functionality.
      *      This function is meant to be called immediately after deployment to configure the factory settings.
      * @param initialOwner The initial owner of the contract with administrative privileges.
+     * @param beacon The address of the beacon contract which holds the address of the implementation logic for tokens.
      * @param router_ The primary router address for interacting with decentralized exchanges.
      * @param voter_ The address of the voting contract for governance-related functionality.
      * @param escrow_ Address where the escrowed funds or tokens will be held.
@@ -78,6 +68,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
      */
     function initialize(
         address initialOwner,
+        address beacon,
         address router_,
         address voter_,
         address escrow_,
@@ -85,8 +76,10 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         address zUSD_,
         uint256 initialVirtualReserveETH_
     ) public initializer {
-        if (initialOwner == address(0) || router_ == address(0) || escrow_ == address(0) || feeRecipient_ == address(0))
-        {
+        if (
+            initialOwner == address(0) || beacon == address(0) || router_ == address(0) || escrow_ == address(0)
+                || feeRecipient_ == address(0)
+        ) {
             revert ZeroAddress();
         }
 
@@ -96,6 +89,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         __Ownable_init(initialOwner);
 
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        $.beacon = beacon;
         $.router = router_;
         $.voter = voter_;
         $.escrow = escrow_;
@@ -593,7 +587,8 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
      * @return The computed hash of the BeaconProxy creation code and the beacon address.
      */
     function getCodeHash() public view returns (bytes32) {
-        return keccak256(abi.encodePacked(type(BeaconProxy).creationCode, abi.encode(beacon, "")));
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        return keccak256(abi.encodePacked(type(BeaconProxy).creationCode, abi.encode($.beacon, "")));
     }
 
     /**
@@ -633,7 +628,7 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         string memory tokenUri,
         bytes32 salt
     ) internal returns (address proxyAddress) {
-        BeaconProxy proxy = new BeaconProxy{salt: salt}(beacon, "");
+        BeaconProxy proxy = new BeaconProxy{salt: salt}($.beacon, "");
         proxyAddress = address(proxy);
 
         address deployer = _msgSender();
