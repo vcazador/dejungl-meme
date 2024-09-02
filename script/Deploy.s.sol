@@ -18,7 +18,7 @@ import {TraderRewards} from "src/rewards/TraderRewards.sol";
 contract DeployScript is Script {
     bytes32 constant SALT = keccak256("dejungl-meme-dev-v1");
 
-    address constant ROUTER = 0xbb4Bd284eE0C5075D97403e2e4b377b39E5BD324;
+    address constant ROUTER = 0x922475d4FFb7DE53eB8965500AD8F530D31e5718;
     address constant VOTER = 0xf50aA5B9f6173B85B641b420B6401C381bA330AF;
     address constant zUSD = 0xcCf17c47B8C21C9cFE1C31339F5EABA90dF62DDc;
     address constant JUNGL = 0x96Ebd195d703b874e606F6225B89738886282e7F;
@@ -87,6 +87,14 @@ contract DeployScript is Script {
 
         if (factory.escrow() != escrowVault) {
             factory.setEscrow(escrowVault);
+        }
+
+        if (factory.router() != ROUTER) {
+            factory.setRouter(ROUTER);
+        }
+
+        if (factory.voter() != VOTER) {
+            factory.setVoter(VOTER);
         }
     }
 
