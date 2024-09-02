@@ -83,7 +83,6 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         DeJunglMemeTokenStorage storage $ = _getDeJunglMemeTokenStorage();
 
         _mint(address(this), factory.maxSupply());
-        _transfer(address(this), _msgSender(), 1 ether);
 
         $.supplyThreshold = factory.supplyThreshold();
         $.escrowAmount = factory.escrowAmount();
@@ -332,6 +331,8 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
         ) {
             _transfer(address(this), factory.escrow(), escrowAmount);
             emit LiquidityAddedAndBurned(amountToken, amountETH, amountZUSD, liquidity);
+
+            $.liquidityAdded = true;
         } catch {}
 
         _syncReserves($);
@@ -347,7 +348,6 @@ contract DeJunglMemeToken is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGua
     function _checkAndAddLiquidity(DeJunglMemeTokenStorage storage $) internal {
         if (_getRemainingAmount($) == 0 && !$.liquidityAdded) {
             _addLiquidity($);
-            $.liquidityAdded = true;
         }
     }
 
