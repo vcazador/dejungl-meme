@@ -20,7 +20,7 @@ contract DeployScript is Script {
 
     address constant ROUTER = 0x922475d4FFb7DE53eB8965500AD8F530D31e5718;
     address constant VOTER = 0xf50aA5B9f6173B85B641b420B6401C381bA330AF;
-    address constant zUSD = 0xcCf17c47B8C21C9cFE1C31339F5EABA90dF62DDc;
+    address constant zUSD = 0x8BAf86620AF5164Be426315Ddf09e2e6Aa183E96;
     address constant JUNGL = 0x96Ebd195d703b874e606F6225B89738886282e7F;
     address payable constant FEE_RECIPIENT = payable(0xEBc5FF890E549203b9C1C7C290262fB40C3B790D); // TODO
     address constant WETH = 0x4200000000000000000000000000000000000006;
@@ -95,6 +95,10 @@ contract DeployScript is Script {
 
         if (factory.voter() != VOTER) {
             factory.setVoter(VOTER);
+        }
+
+        if (factory.zUSD() != zUSD) {
+            factory.setZUSDAddress(zUSD);
         }
     }
 
