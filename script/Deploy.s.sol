@@ -99,13 +99,15 @@ contract DeployScript is Script {
     }
 
     function _deployBeacon(address tokenImplementation) internal returns (address beaconAddress) {
-        bytes32 initCodeHash =
-            hashInitCode(type(UpgradeableBeacon).creationCode, abi.encode(tokenImplementation, deployer));
-        beaconAddress = vm.computeCreate2Address(SALT, initCodeHash);
+        beaconAddress = _loadDeploymentAddress("DeJunglMemeTokenBeacon");
 
-        UpgradeableBeacon beacon;
+            UpgradeableBeacon beacon;
 
         if (!_isDeployed(beaconAddress)) {
+            bytes32 initCodeHash =
+                hashInitCode(type(UpgradeableBeacon).creationCode, abi.encode(tokenImplementation, deployer));
+            beaconAddress = vm.computeCreate2Address(SALT, initCodeHash);
+
             beacon = new UpgradeableBeacon{salt: SALT}(tokenImplementation, deployer);
             assert(address(beacon) == beaconAddress);
         } else {
