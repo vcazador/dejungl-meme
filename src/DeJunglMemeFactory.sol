@@ -55,10 +55,8 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
      *      operational functionality.
      *      This function is meant to be called immediately after deployment to configure the factory settings.
      * @param initialOwner The initial owner of the contract with administrative privileges.
-     * @param beacon The address of the beacon contract which holds the address of the implementation logic for tokens.
      * @param router_ The primary router address for interacting with decentralized exchanges.
      * @param voter_ The address of the voting contract for governance-related functionality.
-     * @param escrow_ Address where the escrowed funds or tokens will be held.
      * @param feeRecipient_ Address where transaction fees are sent.
      * @param zUSD_ The address of the stablecoin used within the platform.
      * @param initialVirtualReserveETH_ Initial virtual ETH reserve used in pricing calculations for the bonding curve.
@@ -68,18 +66,13 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
      */
     function initialize(
         address initialOwner,
-        address beacon,
         address router_,
         address voter_,
-        address escrow_,
         address payable feeRecipient_,
         address zUSD_,
         uint256 initialVirtualReserveETH_
     ) public initializer {
-        if (
-            initialOwner == address(0) || beacon == address(0) || router_ == address(0) || escrow_ == address(0)
-                || feeRecipient_ == address(0)
-        ) {
+        if (initialOwner == address(0) || router_ == address(0) || feeRecipient_ == address(0)) {
             revert ZeroAddress();
         }
 
@@ -89,10 +82,8 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         __Ownable_init(initialOwner);
 
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
-        $.beacon = beacon;
         $.router = router_;
         $.voter = voter_;
-        $.escrow = escrow_;
         $.protocolFeePercentage = 0.01e6;
         $.feeRecipient = feeRecipient_;
         $.zUSD = zUSD_;
@@ -105,7 +96,6 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
 
         emit RouterUpdated(router_);
         emit VoterUpdated(voter_);
-        emit EscrowUpdated(escrow_);
         emit ProtocolFeePercentageUpdated($.protocolFeePercentage);
         emit FeeRecipientUpdated(feeRecipient_);
         emit ZUSDAddressUpdated(zUSD_);
@@ -114,6 +104,18 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
         emit SupplyThresholdUpdated($.supplyThreshold);
         emit EscrowAmountUpdated($.escrowAmount);
         emit InitialVirtualReserveETHUpdated(initialVirtualReserveETH_);
+    }
+
+    /**
+     * @notice Updates the address of the beacon contract which holds the address of the implementation logic for
+     * tokens.
+     * @dev Allows the contract owner to change the beacon address, which is used to deploy new token proxies.
+     * @param beacon_ The address of the new beacon contract.
+     */
+    function setBeacon(address beacon_) external onlyOwner {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        $.beacon = beacon_;
+        emit BeaconUpdated(beacon_);
     }
 
     /**
@@ -414,6 +416,17 @@ contract DeJunglMemeFactory is UUPSUpgradeable, OwnableUpgradeable, IMemeFactory
     function getTotalSpending(uint48 from, uint48 to) public view returns (uint208 totalBuys, uint208 totalSells) {
         DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
         (totalBuys, totalSells) = _getTotalSpending($.totalBuys, $.totalSells, from, to);
+    }
+
+    /**
+     * @notice Retrieves the address of the beacon contract which holds the address of the implementation logic for
+     * tokens.
+     * @dev Provides the address of the beacon contract used to deploy new token proxies.
+     * @return The address of the beacon contract.
+     */
+    function beacon() external view returns (address) {
+        DeJunglMemeFactoryStorage storage $ = _getDeJunglMemeFactoryStorage();
+        return $.beacon;
     }
 
     /**

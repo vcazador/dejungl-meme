@@ -1,8 +1,8 @@
 {
   "DeJunglMemeFactory": "0x1ee370274e3D6ba4909EFE4B2F04E6f138899CdD",
-  "DeJunglMemeFactoryImplementation": "0xF3F23127F1294CE4b9e725f97882f634Ca05a07F",
-  "DeJunglMemeTokenBeacon": "0xf33903461Ccf042258C820531416715a354Df280",
-  "DeJunglMemeTokenImplementation": "0x47DdbCdD6601b1cA72Dd1b913998151642C5eFc4",
+  "DeJunglMemeFactoryImplementation": "0x3808B38074dc3a0Ce781eC8c3e2F772dFCC8429a",
+  "DeJunglMemeTokenBeacon": "0xca6181a5e831eF67e04E276E4909946c43353f8d",
+  "DeJunglMemeTokenImplementation": "0x583d26fbb7dbE2EAC7c60a9b95E6d37C0A5dc2F8",
   "EscrowVault": "0x942dA1127d354cc7147928D6651bFD3602C635E1",
   "EscrowVaultImplementation": "0x3B959cE5076923Ff188e48e91749910139E2C16f",
   "RewardVault": "0x1C488eCA90dCf3DDD44b182C248dca8EEfa4083E",

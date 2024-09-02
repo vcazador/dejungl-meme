@@ -72,17 +72,18 @@ interface IMemeFactory {
         uint256 liquidity
     );
 
+    event BeaconUpdated(address indexed beacon);
     event EscrowAmountUpdated(uint256 escrowAmount);
-    event EscrowUpdated(address escrow);
-    event FeeRecipientUpdated(address feeRecipient);
+    event EscrowUpdated(address indexed escrow);
+    event FeeRecipientUpdated(address indexed feeRecipient);
     event InitialVirtualReserveETHUpdated(uint256 initialVirtualReserveETH);
     event MaxSupplyUpdated(uint256 maxSupply);
     event ProtocolFeePercentageUpdated(uint256 protocolFeePercentage);
-    event RouterUpdated(address router);
+    event RouterUpdated(address indexed router);
     event SlippageUpdated(uint256 slippage);
     event SupplyThresholdUpdated(uint256 supplyThreshold);
-    event VoterUpdated(address voter);
-    event ZUSDAddressUpdated(address zUSD);
+    event VoterUpdated(address indexed voter);
+    event ZUSDAddressUpdated(address indexed zUSD);
 
     /**
      * @dev Emitted when a new DeJunglMemeToken is deployed.

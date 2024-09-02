@@ -41,11 +41,14 @@ contract DeJunglMemeFactoryTest is Test {
             address(factoryImpl),
             abi.encodeCall(
                 DeJunglMemeFactory.initialize,
-                (deployer, address(beacon), router, voter, escrow, feeRecipient, zUSD, initVirtualReserveETH)
+                (deployer, router, voter, feeRecipient, zUSD, initVirtualReserveETH)
             )
         );
 
         factory = DeJunglMemeFactory(payable(address(proxy)));
+        factory.setBeacon(address(beacon));
+        factory.setEscrow(escrow);
+
         testSalt = bytes32(uint256(25816)); // _findSalt(address(factory), 0);
 
         vm.stopPrank();

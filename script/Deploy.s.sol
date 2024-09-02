@@ -58,10 +58,6 @@ contract DeployScript is Script {
         bytes32 initCodeHash = hashInitCode(type(DeJunglMemeFactory).creationCode);
         factoryAddress = vm.computeCreate2Address(SALT, initCodeHash);
 
-        address tokenImplementation = _deployTokenImplementation(factoryAddress);
-        address beacon = _deployBeacon(tokenImplementation);
-        address escrowVault = _deployEscrowVault(factoryAddress);
-
         DeJunglMemeFactory factory;
 
         if (!_isDeployed(factoryAddress)) {
@@ -76,12 +72,18 @@ contract DeployScript is Script {
         factoryAddress = _deployProxy(
             "DeJunglMemeFactory",
             factoryAddress,
-            abi.encodeCall(
-                factory.initialize,
-                (deployer, beacon, ROUTER, VOTER, escrowVault, FEE_RECIPIENT, zUSD, initVirtualReserveETH)
-            )
+            abi.encodeCall(factory.initialize, (deployer, ROUTER, VOTER, FEE_RECIPIENT, zUSD, initVirtualReserveETH))
         );
+
+        address tokenImplementation = _deployTokenImplementation(factoryAddress);
+        address beacon = _deployBeacon(tokenImplementation);
+        address escrowVault = _deployEscrowVault(factoryAddress);
+
         factory = DeJunglMemeFactory(factoryAddress);
+
+        if (factory.beacon() != beacon) {
+            factory.setBeacon(beacon);
+        }
 
         if (factory.escrow() != escrowVault) {
             factory.setEscrow(escrowVault);
